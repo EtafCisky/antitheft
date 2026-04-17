@@ -1,8 +1,9 @@
 /**
  * 角色卡防盗插件样式
+ * Character Card Anti-Theft Plugin Styles
  */
 
-/* 设置面板样式 */
+/* ========== 基础设置 ========== */
 .antitheft-settings {
   padding: 10px 0;
 }
@@ -15,80 +16,278 @@
 
 .antitheft-settings input[type="url"] {
   width: 100%;
-  margin-bottom: 10px;
-}
-
-.antitheft-settings .notes {
-  margin-bottom: 15px;
-  font-size: 0.9em;
-  opacity: 0.8;
-}
-
-/* 版本信息 */
-.antitheft-version {
-  margin-bottom: 10px;
-  text-align: right;
-}
-
-/* 帮助文档样式 */
-.antitheft-help {
-  margin-top: 20px;
-  padding: 15px;
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 5px;
-}
-
-.antitheft-help h4 {
-  margin-top: 15px;
-  margin-bottom: 10px;
-  font-size: 1.1em;
-}
-
-.antitheft-help h4:first-child {
-  margin-top: 0;
-}
-
-.antitheft-help ol,
-.antitheft-help ul {
-  margin-left: 20px;
-  margin-bottom: 10px;
-}
-
-.antitheft-help li {
   margin-bottom: 5px;
 }
 
-.antitheft-help code {
-  background: rgba(0, 0, 0, 0.2);
-  padding: 2px 5px;
-  border-radius: 3px;
-  font-family: monospace;
+.antitheft-settings .notes {
+  display: block;
+  margin-bottom: 15px;
   font-size: 0.9em;
+  opacity: 0.7;
+  line-height: 1.4;
 }
 
-/* 链接样式 */
-.antitheft-links {
-  margin-top: 15px;
+/* ========== 版本徽章 ========== */
+.antitheft-version-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: rgba(var(--SmartThemeBodyColor), 0.3);
+  border-radius: 10px;
+  font-size: 0.75em;
+  font-weight: normal;
+  opacity: 0.8;
+}
+
+/* ========== 标签页导航 ========== */
+.antitheft-tabs {
   display: flex;
-  gap: 15px;
+  gap: 5px;
+  margin-bottom: 15px;
+  border-bottom: 2px solid rgba(var(--SmartThemeBodyColor), 0.2);
+}
+
+.antitheft-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  cursor: pointer;
+  border-radius: 5px 5px 0 0;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+  user-select: none;
+}
+
+.antitheft-tab:hover {
+  opacity: 0.8;
+  background: rgba(var(--SmartThemeBodyColor), 0.1);
+}
+
+.antitheft-tab.active {
+  opacity: 1;
+  background: rgba(var(--SmartThemeBodyColor), 0.15);
+  border-bottom: 2px solid var(--SmartThemeQuoteColor);
+  font-weight: bold;
+}
+
+.antitheft-tab i {
+  font-size: 1em;
+}
+
+/* ========== 标签页内容 ========== */
+.antitheft-tab-content {
+  display: none;
+}
+
+.antitheft-tab-content.active {
+  display: block;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========== Range Block 样式增强 ========== */
+.antitheft-settings .range-block {
+  margin-bottom: 15px;
+}
+
+.antitheft-settings .range-block-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-weight: bold;
+  font-size: 1.05em;
+}
+
+.antitheft-settings .range-block-title i {
+  opacity: 0.7;
+}
+
+/* ========== 链接样式 ========== */
+.antitheft-links {
+  display: flex;
+  gap: 10px;
   flex-wrap: wrap;
+  margin-top: 10px;
 }
 
 .antitheft-links a {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 10px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 5px;
+  gap: 6px;
   text-decoration: none;
-  transition: background 0.2s;
+  transition: all 0.2s ease;
 }
 
-.antitheft-links a:hover {
-  background: rgba(0, 0, 0, 0.3);
+.antitheft-links a i {
+  font-size: 1em;
 }
 
-.antitheft-links i {
-  font-size: 1.1em;
+/* ========== 使用说明页面样式 ========== */
+.antitheft-guide-section {
+  padding: 5px 0;
+}
+
+.antitheft-guide-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 15px 0 10px 0;
+  font-size: 1em;
+  font-weight: bold;
+  color: var(--SmartThemeQuoteColor);
+}
+
+.antitheft-guide-section h4:first-child {
+  margin-top: 5px;
+}
+
+.antitheft-guide-section h4 i {
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+
+/* 步骤列表 */
+.antitheft-guide-list {
+  margin: 10px 0 10px 20px;
+  padding: 0;
+  list-style: none;
+  counter-reset: step-counter;
+}
+
+.antitheft-guide-list li {
+  position: relative;
+  margin-bottom: 15px;
+  padding-left: 35px;
+  counter-increment: step-counter;
+}
+
+.antitheft-guide-list li::before {
+  content: counter(step-counter);
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: var(--SmartThemeQuoteColor);
+  color: var(--SmartThemeBodyColor);
+  border-radius: 50%;
+  font-weight: bold;
+  font-size: 0.85em;
+}
+
+.antitheft-guide-list li strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 1em;
+}
+
+.antitheft-guide-list li p {
+  margin: 0;
+  opacity: 0.8;
+  line-height: 1.5;
+}
+
+/* FAQ 项目 */
+.antitheft-faq-item {
+  margin-bottom: 20px;
+  padding: 12px;
+  background: rgba(var(--SmartThemeBodyColor), 0.05);
+  border-left: 3px solid var(--SmartThemeQuoteColor);
+  border-radius: 5px;
+}
+
+.antitheft-faq-item h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px 0;
+  font-size: 0.95em;
+  font-weight: bold;
+}
+
+.antitheft-faq-item h4 i {
+  font-size: 0.9em;
+  opacity: 0.7;
+}
+
+.antitheft-faq-item p {
+  margin: 8px 0;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
+.antitheft-faq-item ul {
+  margin: 8px 0 8px 20px;
+  padding: 0;
+}
+
+.antitheft-faq-item li {
+  margin-bottom: 5px;
+  opacity: 0.8;
+  line-height: 1.4;
+}
+
+.antitheft-faq-item code {
+  padding: 2px 6px;
+  background: rgba(var(--SmartThemeBodyColor), 0.15);
+  border-radius: 3px;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
+  font-size: 0.9em;
+}
+
+.antitheft-faq-item kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  background: rgba(var(--SmartThemeBodyColor), 0.2);
+  border: 1px solid rgba(var(--SmartThemeBodyColor), 0.3);
+  border-radius: 3px;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
+  font-size: 0.85em;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* API 文档 */
+.antitheft-api-item {
+  margin-bottom: 15px;
+  padding: 10px;
+  background: rgba(var(--SmartThemeBodyColor), 0.05);
+  border-radius: 5px;
+}
+
+.antitheft-api-signature {
+  display: block;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  background: rgba(var(--SmartThemeBodyColor), 0.15);
+  border-left: 3px solid var(--SmartThemeQuoteColor);
+  border-radius: 3px;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
+  font-size: 0.9em;
+  word-break: break-all;
+}
+
+.antitheft-api-item p {
+  margin: 0;
+  opacity: 0.85;
+  line-height: 1.5;
+}
+
+/* ========== 工具类 ========== */
+.marginTop10 {
+  margin-top: 10px;
 }

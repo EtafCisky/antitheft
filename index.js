@@ -378,6 +378,21 @@ jQuery(async () => {
         $('#antitheft_debug').on('input', onDebugChange);
         $('#antitheft_server_url').on('input', onServerUrlChange);
 
+        // 绑定标签页切换事件
+        $('.antitheft-tab').on('click', function () {
+            const tabName = $(this).data('tab');
+
+            // 切换标签页激活状态
+            $('.antitheft-tab').removeClass('active');
+            $(this).addClass('active');
+
+            // 切换内容显示
+            $('.antitheft-tab-content').removeClass('active');
+            $(`#antitheft-${tabName}-tab`).addClass('active');
+
+            logger.debug('切换到标签页:', tabName);
+        });
+
         // 加载设置
         await loadSettings();
 
