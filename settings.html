@@ -127,97 +127,23 @@
               </li>
             </ol>
           </div>
-        </div>
-
-        <div class="range-block">
-          <div class="range-block-title">
-            <i class="fa-solid fa-circle-question"></i>
-            <span>常见问题</span>
-          </div>
 
           <div class="antitheft-guide-section">
-            <div class="antitheft-faq-item">
-              <h4>
-                <i class="fa-solid fa-triangle-exclamation"></i>
-                提示"请安装防盗插件"？
-              </h4>
-              <p>说明插件未正确加载。请检查：</p>
-              <ul>
-                <li>
-                  插件是否安装在
-                  <code>public/scripts/extensions/third-party/antitheft/</code>
-                  目录
-                </li>
-                <li>是否已重启 SillyTavern</li>
-                <li>浏览器控制台是否有错误信息</li>
-              </ul>
-            </div>
-
-            <div class="antitheft-faq-item">
-              <h4><i class="fa-solid fa-key"></i> 密码验证失败？</h4>
-              <p>可能的原因：</p>
-              <ul>
-                <li>密码输入错误，请向角色卡作者确认正确密码</li>
-                <li>网络连接问题，无法访问验证服务器</li>
-                <li>服务器地址配置错误</li>
-              </ul>
-            </div>
-
-            <div class="antitheft-faq-item">
-              <h4><i class="fa-solid fa-bug"></i> 如何查看调试信息？</h4>
-              <p>
-                启用调试模式后，按
-                <kbd>F12</kbd>
-                打开浏览器开发者工具，切换到"控制台"标签页查看详细日志。
-              </p>
-            </div>
-
-            <div class="antitheft-faq-item">
-              <h4>
-                <i class="fa-solid fa-shield-halved"></i>
-                如何为自己的角色卡添加防盗保护？
-              </h4>
-              <p>
-                请访问
-                <a href="https://github.com/EtafCisky/antitheft" target="_blank"
-                  >GitHub 仓库</a
-                >
-                查看完整的创作者指南。
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div class="range-block">
-          <div class="range-block-title">
-            <i class="fa-solid fa-code"></i>
-            <span>开发者 API</span>
-          </div>
-
-          <div class="antitheft-guide-section">
+            <h4><i class="fa-solid fa-book-open"></i> 更多帮助</h4>
             <p>
-              插件提供全局 API 对象
-              <code>window.AntiTheftPlugin</code>，包含以下方法：
+              如需更多帮助信息，请访问
+              <a
+                href="https://github.com/EtafCisky/antitheft/wiki"
+                target="_blank"
+                >使用文档</a
+              >
+              或
+              <a
+                href="https://github.com/EtafCisky/antitheft/issues"
+                target="_blank"
+                >提交问题</a
+              >。
             </p>
-
-            <div class="antitheft-api-item">
-              <code class="antitheft-api-signature">
-                verifyPassword(cardId, password, serverUrl)
-              </code>
-              <p>验证角色卡密码。返回包含验证结果的 Promise。</p>
-            </div>
-
-            <div class="antitheft-api-item">
-              <code class="antitheft-api-signature">
-                checkPasswordVersion(cardId, serverUrl)
-              </code>
-              <p>检查服务器上的密码版本号。返回版本号或 -1。</p>
-            </div>
-
-            <div class="antitheft-api-item">
-              <code class="antitheft-api-signature"> checkVersion() </code>
-              <p>获取插件版本信息。返回包含名称、版本号和安装状态的对象。</p>
-            </div>
           </div>
         </div>
       </div>
