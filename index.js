@@ -1,459 +1,424 @@
 /**
- * SillyTavern 角色卡防盗插件
+ * SillyTavern 角色卡防盗插件 v2.0
  * Character Card Anti-Theft Plugin for SillyTavern
  *
- * @version 1.0.0
+ * 新功能：
+ * - 通过专用按钮导入加密角色卡
+ * - 显示密码验证弹窗
+ * - 解密后自动导入角色卡
+ *
+ * @version 2.0.0
  * @author EtafCisky
  * @license CC BY-ND 4.0
- * @copyright Copyright © 2024 EtafCisky. All rights reserved.
  */
 
-/* global jQuery, window, $ */
+/* global jQuery, window, $, toastr, getCharacters */
 
 import {
-    eventSource,
-    event_types,
-    saveSettingsDebounced,
-} from '../../../../script.js';
-import { extension_settings, getContext } from '../../../extensions.js';
+  getRequestHeaders,
+  saveSettingsDebounced,
+} from "../../../../script.js";
+import { extension_settings } from "../../../extensions.js";
+import { callGenericPopup, POPUP_TYPE } from "../../../popup.js";
 
-// 插件名称（必须与文件夹名称匹配）
-const extensionName = 'antitheft';
+const extensionName = "antitheft";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
-const PLUGIN_VERSION = '1.0.0';
+const PLUGIN_VERSION = "2.0.0";
 
-// 默认设置
 const defaultSettings = {
-    enabled: true,
-    debug: false,
-    serverUrl: '', // 可选：默认服务器地址
+  enabled: true,
+  debug: false,
+  serverUrl: "",
+};
+
+const logger = {
+  info: (message, ...args) => console.log(`[AntiTheft] ${message}`, ...args),
+  warn: (message, ...args) => console.warn(`[AntiTheft] ${message}`, ...args),
+  error: (message, ...args) => console.error(`[AntiTheft] ${message}`, ...args),
+  debug: (message, ...args) => {
+    if (extension_settings[extensionName]?.debug) {
+      console.debug(`[AntiTheft] ${message}`, ...args);
+    }
+  },
 };
 
 /**
- * 日志工具
+ * 读取 PNG 元数据
  */
-const logger = {
-    info: (message, ...args) => {
-        console.log(`[AntiTheft] ${message}`, ...args);
-    },
-    warn: (message, ...args) => {
-        console.warn(`[AntiTheft] ${message}`, ...args);
-    },
-    error: (message, ...args) => {
-        console.error(`[AntiTheft] ${message}`, ...args);
-    },
-    debug: (message, ...args) => {
-        if (extension_settings[extensionName]?.debug) {
-            console.debug(`[AntiTheft] ${message}`, ...args);
+async function readPngMetadata(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const arrayBuffer = e.target.result;
+        const uint8Array = new Uint8Array(arrayBuffer);
+
+        // 验证 PNG 签名
+        const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+        for (let i = 0; i < 8; i++) {
+          if (uint8Array[i] !== pngSignature[i]) {
+            throw new Error("不是有效的 PNG 文件");
+          }
         }
-    },
-};
+
+        let offset = 8;
+        let metadata = null;
+
+        while (offset < uint8Array.length) {
+          const length =
+            (uint8Array[offset] << 24) |
+            (uint8Array[offset + 1] << 16) |
+            (uint8Array[offset + 2] << 8) |
+            uint8Array[offset + 3];
+          offset += 4;
+
+          const type = String.fromCharCode(
+            uint8Array[offset],
+            uint8Array[offset + 1],
+            uint8Array[offset + 2],
+            uint8Array[offset + 3],
+          );
+          offset += 4;
+
+          if (type === "tEXt") {
+            const data = uint8Array.slice(offset, offset + length);
+            let nullIndex = -1;
+            for (let i = 0; i < data.length; i++) {
+              if (data[i] === 0) {
+                nullIndex = i;
+                break;
+              }
+            }
+
+            if (nullIndex !== -1) {
+              const keyword = new TextDecoder().decode(
+                data.slice(0, nullIndex),
+              );
+
+              if (keyword === "chara") {
+                const valueBytes = data.slice(nullIndex + 1);
+                const base64String = new TextDecoder().decode(valueBytes);
+                const binaryString = atob(base64String);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                  bytes[i] = binaryString.charCodeAt(i);
+                }
+                const jsonString = new TextDecoder("utf-8").decode(bytes);
+                metadata = JSON.parse(jsonString);
+                break;
+              }
+            }
+          }
+
+          offset += length + 4;
+
+          if (type === "IEND") break;
+        }
+
+        if (!metadata) {
+          throw new Error("PNG 文件中未找到角色卡元数据");
+        }
+
+        resolve(metadata);
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    reader.onerror = () => reject(new Error("文件读取失败"));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/**
+ * 解密角色卡数据
+ */
+function decryptCardData(encryptedBase64) {
+  try {
+    const jsonString = decodeURIComponent(
+      atob(encryptedBase64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join(""),
+    );
+    return JSON.parse(jsonString);
+  } catch (error) {
+    logger.error("解密失败", error);
+    return null;
+  }
+}
 
 /**
  * 验证密码
- * 供嵌入脚本调用的核心 API
  */
 async function verifyPassword(cardId, password, serverUrl) {
-    logger.debug('verifyPassword called', { cardId, serverUrl });
+  logger.debug("verifyPassword", { cardId, serverUrl });
 
-    // 输入验证
-    if (!cardId || !password || !serverUrl) {
-        logger.error('verifyPassword: 缺少必需参数');
-        return {
-            success: false,
-            message: '参数错误：缺少必需参数',
-        };
+  if (!cardId || !password || !serverUrl) {
+    return { success: false, message: "参数错误" };
+  }
+
+  try {
+    const response = await fetch(`${serverUrl}/api/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ card_id: cardId, password: password }),
+    });
+
+    if (response.status === 429) {
+      return { success: false, message: "请求过于频繁，请稍后再试" };
     }
 
-    // 验证 cardId 格式（6-8位数字）
-    if (!/^\d{6,8}$/.test(cardId)) {
-        logger.error('verifyPassword: cardId 格式无效', cardId);
-        return {
-            success: false,
-            message: '参数错误：cardId 格式无效',
-        };
+    if (!response.ok) {
+      return { success: false, message: `服务器错误 (${response.status})` };
     }
 
-    // 验证 serverUrl 格式
-    try {
-        new URL(serverUrl);
-    } catch (e) {
-        logger.error('verifyPassword: serverUrl 格式无效', serverUrl);
-        return {
-            success: false,
-            message: '参数错误：服务器地址格式无效',
-        };
-    }
-
-    try {
-    // 发送验证请求到服务器
-        const response = await fetch(`${serverUrl}/api/verify`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                card_id: cardId,
-                password: password,
-            }),
-        });
-
-        // 处理速率限制
-        if (response.status === 429) {
-            logger.warn('verifyPassword: 速率限制');
-            return {
-                success: false,
-                message: '请求过于频繁，请稍后再试',
-            };
-        }
-
-        // 处理其他 HTTP 错误
-        if (!response.ok) {
-            logger.error('verifyPassword: HTTP 错误', response.status);
-            return {
-                success: false,
-                message: `服务器错误 (${response.status})`,
-            };
-        }
-
-        const data = await response.json();
-        logger.debug('verifyPassword: 服务器响应', data);
-
-        // 如果验证成功，更新角色卡的锁定状态
-        if (data.success && data.password_version) {
-            await unlockCurrentCard(data.password_version);
-        }
-
-        return data;
-    } catch (error) {
-        logger.error('verifyPassword: 网络错误', error);
-        return {
-            success: false,
-            message: `网络错误：${error.message}`,
-        };
-    }
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    logger.error("验证失败", error);
+    return { success: false, message: `网络错误：${error.message}` };
+  }
 }
 
 /**
- * 检查密码版本
+ * 显示密码验证弹窗
  */
-async function checkPasswordVersion(cardId, serverUrl) {
-    logger.debug('checkPasswordVersion called', { cardId, serverUrl });
+async function showPasswordDialog(cardInfo) {
+  const dialogHtml = `
+    <div style="padding: 20px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h3 style="margin: 16px 0 8px;">🔒 角色卡已加密</h3>
+        <p style="margin: 0; color: #666;">请输入密码以解锁此角色卡</p>
+      </div>
+      
+      <div style="margin-bottom: 16px; padding: 12px; background: #f5f5f5; border-radius: 6px; font-size: 13px;">
+        <div><strong>角色卡:</strong> ${cardInfo.name}</div>
+        <div><strong>Card ID:</strong> ${cardInfo.card_id}</div>
+        <div><strong>服务器:</strong> ${cardInfo.server_url}</div>
+      </div>
+    </div>
+  `;
 
-    if (!cardId || !serverUrl) {
-        logger.error('checkPasswordVersion: 缺少必需参数');
-        return -1;
+  const password = await callGenericPopup(dialogHtml, POPUP_TYPE.INPUT, "", {
+    okButton: "验证",
+    cancelButton: "取消",
+  });
+
+  if (!password) return null;
+
+  // 验证密码
+  const result = await verifyPassword(
+    cardInfo.card_id,
+    password,
+    cardInfo.server_url,
+  );
+
+  if (result.success) {
+    return password;
+  } else {
+    toastr.error(result.message || "密码错误", "验证失败");
+    // 递归重试
+    return await showPasswordDialog(cardInfo);
+  }
+}
+
+/**
+ * 导入解密后的角色卡
+ */
+async function importDecryptedCard(originalMetadata, fileName) {
+  try {
+    logger.info("导入解密后的角色卡", fileName);
+
+    const jsonBlob = new Blob([JSON.stringify(originalMetadata)], {
+      type: "application/json",
+    });
+
+    const formData = new FormData();
+    formData.append("avatar", jsonBlob, `${fileName}.json`);
+    formData.append("file_type", "json");
+
+    const result = await fetch("/api/characters/import", {
+      method: "POST",
+      body: formData,
+      headers: getRequestHeaders({ omitContentType: true }),
+      cache: "no-cache",
+    });
+
+    if (!result.ok) {
+      throw new Error(`导入失败: ${result.statusText}`);
     }
 
-    try {
-        const response = await fetch(`${serverUrl}/api/cards/${cardId}/version`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
+    const data = await result.json();
 
-        if (!response.ok) {
-            logger.error('checkPasswordVersion: HTTP 错误', response.status);
-            return -1;
-        }
-
-        const data = await response.json();
-        logger.debug('checkPasswordVersion: 服务器响应', data);
-
-        return data.password_version || -1;
-    } catch (error) {
-        logger.error('checkPasswordVersion: 网络错误', error);
-        return -1;
+    if (data.error) {
+      throw new Error(`服务器错误: ${data.error}`);
     }
-}
 
-/**
- * 解锁当前角色卡
- */
-async function unlockCurrentCard(passwordVersion) {
-    try {
-    // 获取当前角色卡上下文
-        const context = getContext();
-        if (!context || !context.characters || context.characterId === undefined) {
-            logger.error('unlockCurrentCard: 无法获取角色卡上下文');
-            return;
-        }
-
-        const character = context.characters[context.characterId];
-        if (!character || !character.data) {
-            logger.error('unlockCurrentCard: 角色卡数据无效');
-            return;
-        }
-
-        // 确保 extensions 对象存在
-        if (!character.data.extensions) {
-            character.data.extensions = {};
-        }
-
-        // 确保 anti_theft 配置存在
-        if (!character.data.extensions.anti_theft) {
-            character.data.extensions.anti_theft = {};
-        }
-
-        // 更新锁定状态
-        character.data.extensions.anti_theft.locked = false;
-        character.data.extensions.anti_theft.password_version = passwordVersion;
-        character.data.extensions.anti_theft.last_unlock_time = Date.now();
-
-        logger.info('unlockCurrentCard: 角色卡已解锁', {
-            characterId: context.characterId,
-            passwordVersion,
-        });
-
-        // 保存角色卡数据
-        await saveSettingsDebounced();
-    } catch (error) {
-        logger.error('unlockCurrentCard: 解锁失败', error);
+    if (data.file_name) {
+      logger.info("导入成功", data.file_name);
+      return data.file_name;
     }
+
+    return null;
+  } catch (error) {
+    logger.error("导入失败", error);
+    throw error;
+  }
 }
 
 /**
- * 重新锁定角色卡
- */
-async function lockCard(character) {
-    try {
-        if (!character || !character.data) {
-            logger.error('lockCard: 角色卡数据无效');
-            return;
-        }
-
-        // 确保 extensions 对象存在
-        if (!character.data.extensions) {
-            character.data.extensions = {};
-        }
-
-        // 确保 anti_theft 配置存在
-        if (!character.data.extensions.anti_theft) {
-            character.data.extensions.anti_theft = {};
-        }
-
-        // 更新锁定状态
-        character.data.extensions.anti_theft.locked = true;
-
-        logger.info('lockCard: 角色卡已重新锁定');
-
-        // 保存角色卡数据
-        await saveSettingsDebounced();
-    } catch (error) {
-        logger.error('lockCard: 锁定失败', error);
-    }
-}
-
-/**
- * 检查并自动重新锁定角色卡（如果密码版本不匹配）
- */
-async function checkAndRelockIfNeeded(character) {
-    try {
-        if (!character || !character.data) {
-            return false;
-        }
-
-        const antiTheft = character.data.extensions?.anti_theft;
-        if (!antiTheft || !antiTheft.enabled) {
-            return false;
-        }
-
-        // 如果已经锁定，无需检查
-        if (antiTheft.locked) {
-            return false;
-        }
-
-        // 检查服务器上的密码版本
-        const serverVersion = await checkPasswordVersion(
-            antiTheft.card_id,
-            antiTheft.server_url,
-        );
-
-        // 如果无法获取服务器版本，不重新锁定
-        if (serverVersion === -1) {
-            logger.warn('checkAndRelockIfNeeded: 无法获取服务器密码版本');
-            return false;
-        }
-
-        // 如果版本不匹配，重新锁定
-        const localVersion = antiTheft.password_version || 0;
-        if (serverVersion !== localVersion) {
-            logger.info('checkAndRelockIfNeeded: 密码版本不匹配，重新锁定', {
-                localVersion,
-                serverVersion,
-            });
-            await lockCard(character);
-            return true;
-        }
-
-        return false;
-    } catch (error) {
-        logger.error('checkAndRelockIfNeeded: 检查失败', error);
-        return false;
-    }
-}
-
-/**
- * 获取插件版本
- */
-function getVersion() {
-    return PLUGIN_VERSION;
-}
-
-/**
- * 检查插件版本
- * 供嵌入脚本检测插件是否已安装
- */
-function checkVersion() {
-    return {
-        name: extensionName,
-        version: PLUGIN_VERSION,
-        installed: true,
-    };
-}
-
-/**
- * 加载插件设置
+ * 加载设置
  */
 async function loadSettings() {
-    // 创建设置对象（如果不存在）
-    extension_settings[extensionName] = extension_settings[extensionName] || {};
+  extension_settings[extensionName] = extension_settings[extensionName] || {};
 
-    if (Object.keys(extension_settings[extensionName]).length === 0) {
-        Object.assign(extension_settings[extensionName], defaultSettings);
-    }
+  if (Object.keys(extension_settings[extensionName]).length === 0) {
+    Object.assign(extension_settings[extensionName], defaultSettings);
+  }
 
-    // 更新 UI
-    $('#antitheft_enabled')
-        .prop('checked', extension_settings[extensionName].enabled)
-        .trigger('input');
-    $('#antitheft_debug')
-        .prop('checked', extension_settings[extensionName].debug)
-        .trigger('input');
-    $('#antitheft_server_url')
-        .val(extension_settings[extensionName].serverUrl)
-        .trigger('input');
+  $("#antitheft_enabled")
+    .prop("checked", extension_settings[extensionName].enabled)
+    .trigger("input");
+  $("#antitheft_debug")
+    .prop("checked", extension_settings[extensionName].debug)
+    .trigger("input");
+  $("#antitheft_server_url")
+    .val(extension_settings[extensionName].serverUrl)
+    .trigger("input");
 
-    logger.debug('插件设置已加载', extension_settings[extensionName]);
+  logger.debug("设置已加载", extension_settings[extensionName]);
 }
 
 /**
  * 设置变更处理
  */
 function onEnabledChange(event) {
-    const value = Boolean($(event.target).prop('checked'));
-    extension_settings[extensionName].enabled = value;
-    saveSettingsDebounced();
-    logger.info('插件已' + (value ? '启用' : '禁用'));
+  extension_settings[extensionName].enabled = Boolean(
+    $(event.target).prop("checked"),
+  );
+  saveSettingsDebounced();
 }
 
 function onDebugChange(event) {
-    const value = Boolean($(event.target).prop('checked'));
-    extension_settings[extensionName].debug = value;
-    saveSettingsDebounced();
-    logger.info('调试模式已' + (value ? '启用' : '禁用'));
+  extension_settings[extensionName].debug = Boolean(
+    $(event.target).prop("checked"),
+  );
+  saveSettingsDebounced();
 }
 
 function onServerUrlChange(event) {
-    const value = String($(event.target).val());
-    extension_settings[extensionName].serverUrl = value;
-    saveSettingsDebounced();
-    logger.debug('默认服务器地址已更新', value);
+  extension_settings[extensionName].serverUrl = String($(event.target).val());
+  saveSettingsDebounced();
 }
 
 /**
- * 插件初始化函数
+ * 插件初始化
  */
 jQuery(async () => {
-    try {
-        logger.info(`插件初始化 v${PLUGIN_VERSION}`);
+  try {
+    logger.info(`插件初始化 v${PLUGIN_VERSION}`);
 
-        // 加载设置面板 HTML
-        const settingsHtml = await $.get(`${extensionFolderPath}/settings.html`);
-        $('#extensions_settings').append(settingsHtml);
+    // 加载设置面板
+    const settingsHtml = await $.get(`${extensionFolderPath}/settings.html`);
+    $("#extensions_settings").append(settingsHtml);
 
-        // 绑定事件监听器
-        $('#antitheft_enabled').on('input', onEnabledChange);
-        $('#antitheft_debug').on('input', onDebugChange);
-        $('#antitheft_server_url').on('input', onServerUrlChange);
+    // 绑定设置事件
+    $("#antitheft_enabled").on("input", onEnabledChange);
+    $("#antitheft_debug").on("input", onDebugChange);
+    $("#antitheft_server_url").on("input", onServerUrlChange);
 
-        // 绑定标签页切换事件
-        $('.antitheft-tab').on('click', function () {
-            const tabName = $(this).data('tab');
+    // 绑定标签页切换
+    $(".antitheft-tab").on("click", function () {
+      const tabName = $(this).data("tab");
+      $(".antitheft-tab").removeClass("active");
+      $(this).addClass("active");
+      $(".antitheft-tab-content").removeClass("active");
+      $(`#antitheft-${tabName}-tab`).addClass("active");
+    });
 
-            // 切换标签页激活状态
-            $('.antitheft-tab').removeClass('active');
-            $(this).addClass('active');
+    // 加载设置
+    await loadSettings();
 
-            // 切换内容显示
-            $('.antitheft-tab-content').removeClass('active');
-            $(`#antitheft-${tabName}-tab`).addClass('active');
+    // 绑定导入按钮
+    $("#antitheft_import_button").on("click", function () {
+      $("#antitheft_import_file").trigger("click");
+    });
 
-            logger.debug('切换到标签页:', tabName);
-        });
+    $("#antitheft_import_file").on("change", async function (e) {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
 
-        // 加载设置
-        await loadSettings();
+      const file = files[0];
+      logger.info("选择文件", file.name);
 
-        // 注册全局 API，供嵌入脚本调用
-        window.AntiTheftPlugin = {
-            // 核心 API
-            verifyPassword: verifyPassword,
-            checkPasswordVersion: checkPasswordVersion,
-            unlockCard: unlockCurrentCard,
-            lockCard: lockCard,
-            checkAndRelockIfNeeded: checkAndRelockIfNeeded,
+      try {
+        const metadata = await readPngMetadata(file);
 
-            // 工具函数
-            getVersion: getVersion,
-            checkVersion: checkVersion,
+        if (
+          metadata.spec === "chara_card_v2_encrypted" &&
+          metadata.anti_theft_encrypted
+        ) {
+          logger.info("检测到加密角色卡");
 
-            // 版本信息
-            version: PLUGIN_VERSION,
-            name: extensionName,
-        };
+          const cardInfo = {
+            name: metadata.name,
+            card_id: metadata.anti_theft_encrypted.card_id,
+            server_url: metadata.anti_theft_encrypted.server_url,
+            encrypted_data: metadata.anti_theft_encrypted.encrypted_data,
+          };
 
-        logger.info('全局 API 已注册: window.AntiTheftPlugin');
+          const password = await showPasswordDialog(cardInfo);
 
-        // 注册角色卡加载事件监听器，用于自动重新锁定检查
-        eventSource.on(event_types.CHARACTER_SELECTED, async (characterId) => {
-            logger.debug('角色卡加载事件触发', { characterId });
+          if (!password) {
+            toastr.info("已取消导入", "提示");
+            $(this).val("");
+            return;
+          }
 
-            try {
-                // 获取角色卡上下文
-                const context = getContext();
-                if (!context || !context.characters || characterId === undefined) {
-                    return;
-                }
+          const originalMetadata = decryptCardData(cardInfo.encrypted_data);
 
-                const character = context.characters[characterId];
-                if (!character || !character.data) {
-                    return;
-                }
+          if (!originalMetadata) {
+            toastr.error("解密失败，数据可能已损坏", "错误");
+            $(this).val("");
+            return;
+          }
 
-                // 检查是否需要重新锁定
-                const relocked = await checkAndRelockIfNeeded(character);
-                if (relocked) {
-                    logger.info('角色卡已自动重新锁定，需要重新验证密码');
+          const fileName = await importDecryptedCard(
+            originalMetadata,
+            file.name.replace(".png", ""),
+          );
 
-                    // 触发自定义事件，通知嵌入脚本需要重新验证
-                    if (typeof window.dispatchEvent === 'function') {
-                        window.dispatchEvent(
-                            new CustomEvent('antiTheftCardRelocked', {
-                                detail: { characterId, character },
-                            }),
-                        );
-                    }
-                }
-            } catch (error) {
-                logger.error('自动重新锁定检查失败', error);
+          if (fileName) {
+            toastr.success(`角色卡已导入: ${fileName}`, "成功");
+            if (typeof getCharacters === "function") {
+              await getCharacters();
             }
-        });
+          }
+        } else {
+          toastr.warning("此文件不是加密角色卡", "提示");
+        }
+      } catch (error) {
+        logger.error("导入失败", error);
+        toastr.error(error.message || "导入失败", "错误");
+      } finally {
+        $(this).val("");
+      }
+    });
 
-        logger.info('已注册角色卡加载事件监听器');
-        logger.info('插件初始化完成');
-    } catch (error) {
-        logger.error('插件初始化失败', error);
-    }
+    // 注册全局 API
+    window.AntiTheftPlugin = {
+      verifyPassword,
+      decryptCardData,
+      importDecryptedCard,
+      readPngMetadata,
+      version: PLUGIN_VERSION,
+      name: extensionName,
+    };
+
+    logger.info("插件初始化完成");
+  } catch (error) {
+    logger.error("插件初始化失败", error);
+  }
 });

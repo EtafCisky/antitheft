@@ -22,6 +22,32 @@
       <div class="antitheft-tab-content active" id="antitheft-settings-tab">
         <div class="range-block">
           <div class="range-block-title">
+            <i class="fa-solid fa-file-import"></i>
+            <span>导入加密角色卡</span>
+          </div>
+
+          <div class="antitheft-import-section">
+            <p class="notes marginBot10">
+              使用此功能导入已加密的角色卡文件。系统会自动检测加密状态并要求输入密码。
+            </p>
+            <button id="antitheft_import_button" class="menu_button">
+              <i class="fa-solid fa-file-import"></i>
+              <span>选择加密角色卡文件</span>
+            </button>
+            <input
+              id="antitheft_import_file"
+              type="file"
+              accept=".png"
+              style="display: none"
+            />
+            <small class="notes marginTop10">
+              支持的格式：PNG 图片文件（包含加密的角色卡数据）
+            </small>
+          </div>
+        </div>
+
+        <div class="range-block">
+          <div class="range-block-title">
             <i class="fa-solid fa-toggle-on"></i>
             <span>基本设置</span>
           </div>
