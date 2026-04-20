@@ -1,15 +1,6 @@
 /**
- * SillyTavern 角色卡防盗插件 v2.0
- * Character Card Anti-Theft Plugin for SillyTavern
- *
- * 新功能：
- * - 通过专用按钮导入加密角色卡
- * - 显示密码验证弹窗
- * - 解密后自动导入角色卡
- *
- * @version 2.0.0
- * @author EtafCisky
- * @license CC BY-ND 4.0
+ * SillyTavern 角色卡防盗插件 v3.0
+ * 使用字符串加密格式，完全阻止直接导入
  */
 
 /* global jQuery, window, $, toastr, getCharacters */
@@ -23,7 +14,7 @@ import { callGenericPopup, POPUP_TYPE } from "../../../popup.js";
 
 const extensionName = "antitheft";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
-const PLUGIN_VERSION = "2.0.0";
+const PLUGIN_VERSION = "3.0.0";
 
 const defaultSettings = {
   enabled: true,
@@ -43,7 +34,7 @@ const logger = {
 };
 
 /**
- * 读取 PNG 元数据
+ * 读取 PNG 元数据 - 支持加密格式
  */
 async function readPngMetadata(file) {
   return new Promise((resolve, reject) => {
@@ -54,7 +45,6 @@ async function readPngMetadata(file) {
         const arrayBuffer = e.target.result;
         const uint8Array = new Uint8Array(arrayBuffer);
 
-        // 验证 PNG 签名
         const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
         for (let i = 0; i < 8; i++) {
           if (uint8Array[i] !== pngSignature[i]) {
@@ -63,7 +53,7 @@ async function readPngMetadata(file) {
         }
 
         let offset = 8;
-        let metadata = null;
+        let metadataString = null;
 
         while (offset < uint8Array.length) {
           const length =
@@ -104,23 +94,37 @@ async function readPngMetadata(file) {
                 for (let i = 0; i < binaryString.length; i++) {
                   bytes[i] = binaryString.charCodeAt(i);
                 }
-                const jsonString = new TextDecoder("utf-8").decode(bytes);
-                metadata = JSON.parse(jsonString);
+                metadataString = new TextDecoder("utf-8").decode(bytes);
                 break;
               }
             }
           }
 
           offset += length + 4;
-
           if (type === "IEND") break;
         }
 
-        if (!metadata) {
+        if (!metadataString) {
           throw new Error("PNG 文件中未找到角色卡元数据");
         }
 
-        resolve(metadata);
+        // 检查是否为加密格式: ENCRYPTED:cardId:serverUrl:version:base64data
+        if (metadataString.startsWith("ENCRYPTED:")) {
+          const parts = metadataString.split(":");
+          if (parts.length >= 5) {
+            resolve({
+              encrypted: true,
+              card_id: parts[1],
+              server_url: parts[2],
+              password_version: parseInt(parts[3]),
+              encrypted_data: parts.slice(4).join(":"),
+            });
+          } else {
+            throw new Error("加密格式错误");
+          }
+        } else {
+          resolve({ encrypted: false });
+        }
       } catch (error) {
         reject(error);
       }
@@ -153,12 +157,6 @@ function decryptCardData(encryptedBase64) {
  * 验证密码
  */
 async function verifyPassword(cardId, password, serverUrl) {
-  logger.debug("verifyPassword", { cardId, serverUrl });
-
-  if (!cardId || !password || !serverUrl) {
-    return { success: false, message: "参数错误" };
-  }
-
   try {
     const response = await fetch(`${serverUrl}/api/verify`, {
       method: "POST",
@@ -167,17 +165,15 @@ async function verifyPassword(cardId, password, serverUrl) {
     });
 
     if (response.status === 429) {
-      return { success: false, message: "请求过于频繁，请稍后再试" };
+      return { success: false, message: "请求过于频繁" };
     }
 
     if (!response.ok) {
       return { success: false, message: `服务器错误 (${response.status})` };
     }
 
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (error) {
-    logger.error("验证失败", error);
     return { success: false, message: `网络错误：${error.message}` };
   }
 }
@@ -189,12 +185,11 @@ async function showPasswordDialog(cardInfo) {
   const dialogHtml = `
     <div style="padding: 20px;">
       <div style="text-align: center; margin-bottom: 20px;">
-        <h3 style="margin: 16px 0 8px;">🔒 角色卡已加密</h3>
-        <p style="margin: 0; color: #666;">请输入密码以解锁此角色卡</p>
+        <h3>🔒 角色卡已加密</h3>
+        <p style="color: #666;">请输入密码解锁</p>
       </div>
-      
       <div style="margin-bottom: 16px; padding: 12px; background: #f5f5f5; border-radius: 6px; font-size: 13px;">
-        <div><strong>角色卡:</strong> ${cardInfo.name}</div>
+        <div><strong>文件:</strong> ${cardInfo.name}</div>
         <div><strong>Card ID:</strong> ${cardInfo.card_id}</div>
         <div><strong>服务器:</strong> ${cardInfo.server_url}</div>
       </div>
@@ -208,7 +203,6 @@ async function showPasswordDialog(cardInfo) {
 
   if (!password) return null;
 
-  // 验证密码
   const result = await verifyPassword(
     cardInfo.card_id,
     password,
@@ -219,7 +213,6 @@ async function showPasswordDialog(cardInfo) {
     return password;
   } else {
     toastr.error(result.message || "密码错误", "验证失败");
-    // 递归重试
     return await showPasswordDialog(cardInfo);
   }
 }
@@ -229,8 +222,6 @@ async function showPasswordDialog(cardInfo) {
  */
 async function importDecryptedCard(originalMetadata, fileName) {
   try {
-    logger.info("导入解密后的角色卡", fileName);
-
     const jsonBlob = new Blob([JSON.stringify(originalMetadata)], {
       type: "application/json",
     });
@@ -243,7 +234,6 @@ async function importDecryptedCard(originalMetadata, fileName) {
       method: "POST",
       body: formData,
       headers: getRequestHeaders({ omitContentType: true }),
-      cache: "no-cache",
     });
 
     if (!result.ok) {
@@ -251,17 +241,11 @@ async function importDecryptedCard(originalMetadata, fileName) {
     }
 
     const data = await result.json();
-
     if (data.error) {
       throw new Error(`服务器错误: ${data.error}`);
     }
 
-    if (data.file_name) {
-      logger.info("导入成功", data.file_name);
-      return data.file_name;
-    }
-
-    return null;
+    return data.file_name || null;
   } catch (error) {
     logger.error("导入失败", error);
     throw error;
@@ -273,44 +257,19 @@ async function importDecryptedCard(originalMetadata, fileName) {
  */
 async function loadSettings() {
   extension_settings[extensionName] = extension_settings[extensionName] || {};
-
   if (Object.keys(extension_settings[extensionName]).length === 0) {
     Object.assign(extension_settings[extensionName], defaultSettings);
   }
 
-  $("#antitheft_enabled")
-    .prop("checked", extension_settings[extensionName].enabled)
-    .trigger("input");
-  $("#antitheft_debug")
-    .prop("checked", extension_settings[extensionName].debug)
-    .trigger("input");
-  $("#antitheft_server_url")
-    .val(extension_settings[extensionName].serverUrl)
-    .trigger("input");
-
-  logger.debug("设置已加载", extension_settings[extensionName]);
-}
-
-/**
- * 设置变更处理
- */
-function onEnabledChange(event) {
-  extension_settings[extensionName].enabled = Boolean(
-    $(event.target).prop("checked"),
+  $("#antitheft_enabled").prop(
+    "checked",
+    extension_settings[extensionName].enabled,
   );
-  saveSettingsDebounced();
-}
-
-function onDebugChange(event) {
-  extension_settings[extensionName].debug = Boolean(
-    $(event.target).prop("checked"),
+  $("#antitheft_debug").prop(
+    "checked",
+    extension_settings[extensionName].debug,
   );
-  saveSettingsDebounced();
-}
-
-function onServerUrlChange(event) {
-  extension_settings[extensionName].serverUrl = String($(event.target).val());
-  saveSettingsDebounced();
+  $("#antitheft_server_url").val(extension_settings[extensionName].serverUrl);
 }
 
 /**
@@ -320,16 +279,28 @@ jQuery(async () => {
   try {
     logger.info(`插件初始化 v${PLUGIN_VERSION}`);
 
-    // 加载设置面板
     const settingsHtml = await $.get(`${extensionFolderPath}/settings.html`);
     $("#extensions_settings").append(settingsHtml);
 
-    // 绑定设置事件
-    $("#antitheft_enabled").on("input", onEnabledChange);
-    $("#antitheft_debug").on("input", onDebugChange);
-    $("#antitheft_server_url").on("input", onServerUrlChange);
+    $("#antitheft_enabled").on("input", (e) => {
+      extension_settings[extensionName].enabled = Boolean(
+        $(e.target).prop("checked"),
+      );
+      saveSettingsDebounced();
+    });
 
-    // 绑定标签页切换
+    $("#antitheft_debug").on("input", (e) => {
+      extension_settings[extensionName].debug = Boolean(
+        $(e.target).prop("checked"),
+      );
+      saveSettingsDebounced();
+    });
+
+    $("#antitheft_server_url").on("input", (e) => {
+      extension_settings[extensionName].serverUrl = String($(e.target).val());
+      saveSettingsDebounced();
+    });
+
     $(".antitheft-tab").on("click", function () {
       const tabName = $(this).data("tab");
       $(".antitheft-tab").removeClass("active");
@@ -338,13 +309,11 @@ jQuery(async () => {
       $(`#antitheft-${tabName}-tab`).addClass("active");
     });
 
-    // 加载设置
     await loadSettings();
 
-    // 绑定导入按钮
-    $("#antitheft_import_button").on("click", function () {
-      $("#antitheft_import_file").trigger("click");
-    });
+    $("#antitheft_import_button").on("click", () =>
+      $("#antitheft_import_file").trigger("click"),
+    );
 
     $("#antitheft_import_file").on("change", async function (e) {
       const files = e.target.files;
@@ -354,33 +323,28 @@ jQuery(async () => {
       logger.info("选择文件", file.name);
 
       try {
-        const metadata = await readPngMetadata(file);
+        const result = await readPngMetadata(file);
 
-        if (
-          metadata.spec === "chara_card_v2_encrypted" &&
-          metadata.anti_theft_encrypted
-        ) {
+        if (result.encrypted) {
           logger.info("检测到加密角色卡");
 
           const cardInfo = {
-            name: metadata.name,
-            card_id: metadata.anti_theft_encrypted.card_id,
-            server_url: metadata.anti_theft_encrypted.server_url,
-            encrypted_data: metadata.anti_theft_encrypted.encrypted_data,
+            name: file.name.replace(".png", ""),
+            card_id: result.card_id,
+            server_url: result.server_url,
+            encrypted_data: result.encrypted_data,
           };
 
           const password = await showPasswordDialog(cardInfo);
-
           if (!password) {
-            toastr.info("已取消导入", "提示");
+            toastr.info("已取消导入");
             $(this).val("");
             return;
           }
 
           const originalMetadata = decryptCardData(cardInfo.encrypted_data);
-
           if (!originalMetadata) {
-            toastr.error("解密失败，数据可能已损坏", "错误");
+            toastr.error("解密失败");
             $(this).val("");
             return;
           }
@@ -389,32 +353,29 @@ jQuery(async () => {
             originalMetadata,
             file.name.replace(".png", ""),
           );
-
           if (fileName) {
-            toastr.success(`角色卡已导入: ${fileName}`, "成功");
+            toastr.success(`角色卡已导入: ${fileName}`);
             if (typeof getCharacters === "function") {
               await getCharacters();
             }
           }
         } else {
-          toastr.warning("此文件不是加密角色卡", "提示");
+          toastr.warning("此文件不是加密角色卡");
         }
       } catch (error) {
         logger.error("导入失败", error);
-        toastr.error(error.message || "导入失败", "错误");
+        toastr.error(error.message || "导入失败");
       } finally {
         $(this).val("");
       }
     });
 
-    // 注册全局 API
     window.AntiTheftPlugin = {
       verifyPassword,
       decryptCardData,
       importDecryptedCard,
       readPngMetadata,
       version: PLUGIN_VERSION,
-      name: extensionName,
     };
 
     logger.info("插件初始化完成");
