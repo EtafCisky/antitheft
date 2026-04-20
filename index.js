@@ -114,19 +114,48 @@ async function readPngMetadata(file) {
         // 检查是否为加密格式: ENCRYPTED:cardId:serverUrl:version:base64data
         if (metadataString.startsWith("ENCRYPTED:")) {
           logger.debug("检测到加密格式");
-          const parts = metadataString.split(":");
-          logger.debug("分割后的部分数量:", parts.length);
-          if (parts.length >= 5) {
-            resolve({
-              encrypted: true,
-              card_id: parts[1],
-              server_url: parts[2],
-              password_version: parseInt(parts[3]),
-              encrypted_data: parts.slice(4).join(":"),
-            });
-          } else {
-            throw new Error("加密格式错误");
+
+          // 使用正则表达式解析，避免 serverUrl 中的冒号导致解析错误
+          // 格式: ENCRYPTED:cardId:serverUrl:version:base64data
+          const encryptedPrefix = "ENCRYPTED:";
+          let remaining = metadataString.substring(encryptedPrefix.length);
+
+          // 提取 cardId (6-8位数字)
+          const cardIdMatch = remaining.match(/^(\d{6,8}):/);
+          if (!cardIdMatch) {
+            throw new Error("加密格式错误：无法解析 cardId");
           }
+          const card_id = cardIdMatch[1];
+          remaining = remaining.substring(card_id.length + 1);
+
+          // 提取 serverUrl (http:// 或 https:// 开头，到下一个 :数字: 为止)
+          const serverUrlMatch = remaining.match(
+            /^(https?:\/\/[^:]+(?::\d+)?):(\d+):/,
+          );
+          if (!serverUrlMatch) {
+            throw new Error("加密格式错误：无法解析 serverUrl");
+          }
+          const server_url = serverUrlMatch[1];
+          const password_version = parseInt(serverUrlMatch[2]);
+          remaining = remaining.substring(serverUrlMatch[0].length);
+
+          // 剩余部分是 encrypted_data
+          const encrypted_data = remaining;
+
+          logger.debug("解析结果:", {
+            card_id,
+            server_url,
+            password_version,
+            encrypted_data_length: encrypted_data.length,
+          });
+
+          resolve({
+            encrypted: true,
+            card_id,
+            server_url,
+            password_version,
+            encrypted_data,
+          });
         } else {
           logger.warn(
             "不是加密格式，元数据开头:",
@@ -167,6 +196,7 @@ function decryptCardData(encryptedBase64) {
  */
 async function verifyPassword(cardId, password, serverUrl) {
   try {
+    logger.debug("验证密码请求:", { cardId, serverUrl });
     const response = await fetch(`${serverUrl}/api/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
