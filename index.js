@@ -108,9 +108,14 @@ async function readPngMetadata(file) {
           throw new Error("PNG 文件中未找到角色卡元数据");
         }
 
+        // 调试：输出元数据前100个字符
+        logger.debug("元数据内容:", metadataString.substring(0, 100));
+
         // 检查是否为加密格式: ENCRYPTED:cardId:serverUrl:version:base64data
         if (metadataString.startsWith("ENCRYPTED:")) {
+          logger.debug("检测到加密格式");
           const parts = metadataString.split(":");
+          logger.debug("分割后的部分数量:", parts.length);
           if (parts.length >= 5) {
             resolve({
               encrypted: true,
@@ -123,6 +128,10 @@ async function readPngMetadata(file) {
             throw new Error("加密格式错误");
           }
         } else {
+          logger.warn(
+            "不是加密格式，元数据开头:",
+            metadataString.substring(0, 20),
+          );
           resolve({ encrypted: false });
         }
       } catch (error) {
