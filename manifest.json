@@ -7,7 +7,6 @@
   "css": "style.css",
   "author": "EtafCisky",
   "version": "2.0.0",
-  "homePage": "https://github.com/your-repo/antitheft",
   "license": "CC BY-ND 4.0",
-  "description": "角色卡防盗插件，用于验证加密角色卡的密码并管理角色卡的锁定状态。Character Card Anti-Theft Plugin for password verification and card lock management."
+  "description": "角色卡防盗插件，用于解密和导入加密的角色卡文件。支持密码验证和自动解密导入功能。"
 }
