@@ -259,15 +259,123 @@ async function showPasswordDialog(cardInfo) {
 /**
  * 导入解密后的角色卡
  */
-async function importDecryptedCard(originalMetadata, fileName) {
+async function importDecryptedCard(originalMetadata, fileName, originalFile) {
   try {
-    const jsonBlob = new Blob([JSON.stringify(originalMetadata)], {
-      type: "application/json",
+    // 读取原始 PNG 文件
+    const arrayBuffer = await originalFile.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+
+    // 将解密后的元数据转换为 base64
+    const jsonString = JSON.stringify(originalMetadata);
+    const utf8Bytes = new TextEncoder().encode(jsonString);
+    const binaryString = Array.from(utf8Bytes)
+      .map((byte) => String.fromCharCode(byte))
+      .join("");
+    const base64String = btoa(binaryString);
+
+    // 创建新的 PNG，将解密后的元数据写入 tEXt chunk
+    const newPngData = [];
+
+    // 复制 PNG 签名
+    for (let i = 0; i < 8; i++) {
+      newPngData.push(uint8Array[i]);
+    }
+
+    // 添加解密后的 chara tEXt chunk
+    const keyword = "chara";
+    const keywordBytes = new TextEncoder().encode(keyword);
+    const valueBytes = new TextEncoder().encode(base64String);
+    const chunkData = new Uint8Array(
+      keywordBytes.length + 1 + valueBytes.length,
+    );
+    chunkData.set(keywordBytes, 0);
+    chunkData[keywordBytes.length] = 0; // null separator
+    chunkData.set(valueBytes, keywordBytes.length + 1);
+
+    const chunkLength = chunkData.length;
+    const chunkType = new TextEncoder().encode("tEXt");
+
+    // 写入 chunk length
+    newPngData.push((chunkLength >> 24) & 0xff);
+    newPngData.push((chunkLength >> 16) & 0xff);
+    newPngData.push((chunkLength >> 8) & 0xff);
+    newPngData.push(chunkLength & 0xff);
+
+    // 写入 chunk type
+    for (let i = 0; i < 4; i++) {
+      newPngData.push(chunkType[i]);
+    }
+
+    // 写入 chunk data
+    for (let i = 0; i < chunkData.length; i++) {
+      newPngData.push(chunkData[i]);
+    }
+
+    // 计算 CRC
+    const crcData = new Uint8Array(4 + chunkData.length);
+    crcData.set(chunkType, 0);
+    crcData.set(chunkData, 4);
+    const crc = calculateCRC32(crcData);
+
+    // 写入 CRC
+    newPngData.push((crc >> 24) & 0xff);
+    newPngData.push((crc >> 16) & 0xff);
+    newPngData.push((crc >> 8) & 0xff);
+    newPngData.push(crc & 0xff);
+
+    // 复制原始 PNG 的其他 chunks（跳过旧的 chara tEXt chunk）
+    let offset = 8;
+    while (offset < uint8Array.length) {
+      const length =
+        (uint8Array[offset] << 24) |
+        (uint8Array[offset + 1] << 16) |
+        (uint8Array[offset + 2] << 8) |
+        uint8Array[offset + 3];
+
+      const type = String.fromCharCode(
+        uint8Array[offset + 4],
+        uint8Array[offset + 5],
+        uint8Array[offset + 6],
+        uint8Array[offset + 7],
+      );
+
+      // 跳过旧的 chara tEXt chunk
+      if (type === "tEXt") {
+        const data = uint8Array.slice(offset + 8, offset + 8 + length);
+        let nullIndex = -1;
+        for (let i = 0; i < data.length; i++) {
+          if (data[i] === 0) {
+            nullIndex = i;
+            break;
+          }
+        }
+        if (nullIndex !== -1) {
+          const kw = new TextDecoder().decode(data.slice(0, nullIndex));
+          if (kw === "chara") {
+            // 跳过这个 chunk
+            offset += 12 + length;
+            continue;
+          }
+        }
+      }
+
+      // 复制其他 chunks
+      for (let i = 0; i < 12 + length; i++) {
+        newPngData.push(uint8Array[offset + i]);
+      }
+
+      offset += 12 + length;
+      if (type === "IEND") break;
+    }
+
+    // 创建新的 PNG Blob
+    const newPngBlob = new Blob([new Uint8Array(newPngData)], {
+      type: "image/png",
     });
 
+    // 导入 PNG 文件
     const formData = new FormData();
-    formData.append("avatar", jsonBlob, `${fileName}.json`);
-    formData.append("file_type", "json");
+    formData.append("avatar", newPngBlob, `${fileName}.png`);
 
     const result = await fetch("/api/characters/import", {
       method: "POST",
@@ -289,6 +397,20 @@ async function importDecryptedCard(originalMetadata, fileName) {
     logger.error("导入失败", error);
     throw error;
   }
+}
+
+/**
+ * 计算 CRC32
+ */
+function calculateCRC32(data) {
+  let crc = 0xffffffff;
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i];
+    for (let j = 0; j < 8; j++) {
+      crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 /**
@@ -391,6 +513,7 @@ jQuery(async () => {
           const fileName = await importDecryptedCard(
             originalMetadata,
             file.name.replace(".png", ""),
+            file,
           );
           if (fileName) {
             toastr.success(`角色卡已导入: ${fileName}`);
