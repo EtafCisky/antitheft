@@ -259,58 +259,58 @@ async function showPasswordDialog(cardInfo) {
 /**
  * 导入解密后的角色卡
  */
-async function importDecryptedCard(originalMetadata, fileName, originalFile) {
+async function importDecryptedCard(originalMetadata, fileName, pngFile) {
   try {
-    // 第一步：导入 JSON 元数据创建角色卡
+    // 第一步：导入 JSON 数据
     const jsonBlob = new Blob([JSON.stringify(originalMetadata)], {
       type: "application/json",
     });
 
-    const formData1 = new FormData();
-    formData1.append("avatar", jsonBlob, `${fileName}.json`);
-    formData1.append("file_type", "json");
+    const formData = new FormData();
+    formData.append("avatar", jsonBlob, `${fileName}.json`);
+    formData.append("file_type", "json");
 
-    const result1 = await fetch("/api/characters/import", {
+    const result = await fetch("/api/characters/import", {
       method: "POST",
-      body: formData1,
+      body: formData,
       headers: getRequestHeaders({ omitContentType: true }),
     });
 
-    logger.debug("导入 JSON 响应状态:", result1.status);
-
-    if (!result1.ok) {
-      const errorText = await result1.text();
-      logger.error("导入 JSON 失败:", errorText);
-      throw new Error(`导入失败: ${result1.statusText}`);
+    if (!result.ok) {
+      throw new Error(`导入失败: ${result.statusText}`);
     }
 
-    const data1 = await result1.json();
-    logger.debug("导入 JSON 响应:", data1);
+    const data = await result.json();
+    if (data.error) {
+      throw new Error(`服务器错误: ${data.error}`);
+    }
 
-    const characterName = data1.file_name || fileName;
+    const importedFileName = data.file_name;
+    if (!importedFileName) {
+      throw new Error("导入成功但未返回文件名");
+    }
 
-    // 第二步：上传 PNG 作为头像
-    try {
-      const formData2 = new FormData();
-      formData2.append("avatar", originalFile, `${characterName}.png`);
-      formData2.append("overwrite_name", characterName);
+    // 第二步：上传 PNG 图片作为头像
+    if (pngFile) {
+      logger.debug("上传头像:", importedFileName);
+      const avatarFormData = new FormData();
+      avatarFormData.append("avatar", pngFile);
+      avatarFormData.append("overwrite_name", importedFileName);
 
-      const result2 = await fetch("/api/characters/edit-avatar", {
+      const avatarResult = await fetch("/api/characters/upload-avatar", {
         method: "POST",
-        body: formData2,
+        body: avatarFormData,
         headers: getRequestHeaders({ omitContentType: true }),
       });
 
-      if (result2.ok) {
-        logger.info("头像上传成功");
-      } else {
+      if (!avatarResult.ok) {
         logger.warn("头像上传失败，但角色卡已导入");
+      } else {
+        logger.debug("头像上传成功");
       }
-    } catch (avatarError) {
-      logger.warn("头像上传失败:", avatarError);
     }
 
-    return characterName;
+    return importedFileName;
   } catch (error) {
     logger.error("导入失败", error);
     throw error;
@@ -417,7 +417,7 @@ jQuery(async () => {
           const fileName = await importDecryptedCard(
             originalMetadata,
             file.name.replace(".png", ""),
-            file,
+            file, // 传入原始 PNG 文件用于上传头像
           );
           if (fileName) {
             toastr.success(`角色卡已导入: ${fileName}`);
