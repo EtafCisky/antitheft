@@ -1,151 +1,47 @@
 <div class="inline-drawer">
   <div class="inline-drawer-toggle inline-drawer-header">
     <b>角色卡防盗插件</b>
-    <span class="antitheft-version-badge">v2.0.0</span>
+    <span class="antitheft-version-badge">v3.0.0</span>
     <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
   </div>
   <div class="inline-drawer-content">
     <div class="antitheft-settings">
-      <!-- 标签页导航 -->
-      <div class="antitheft-tabs">
-        <div class="antitheft-tab active" data-tab="settings">
-          <i class="fa-solid fa-gear"></i>
-          <span>设置</span>
-        </div>
-        <div class="antitheft-tab" data-tab="guide">
-          <i class="fa-solid fa-book"></i>
-          <span>使用说明</span>
+      <!-- 导入区域 -->
+      <div class="range-block">
+        <div class="antitheft-import-section">
+          <button
+            id="antitheft_import_button"
+            class="menu_button menu_button_icon"
+          >
+            <i class="fa-solid fa-file-import"></i>
+            <span>导入加密卡</span>
+          </button>
+          <input
+            id="antitheft_import_file"
+            type="file"
+            accept=".png"
+            style="display: none"
+          />
         </div>
       </div>
 
-      <!-- 设置页面 -->
-      <div class="antitheft-tab-content active" id="antitheft-settings-tab">
-        <div class="range-block">
-          <div class="range-block-title">
-            <i class="fa-solid fa-file-import"></i>
-            <span>导入加密角色卡</span>
-          </div>
+      <!-- 可选设置 -->
+      <div class="range-block">
+        <label class="checkbox_label" for="antitheft_debug">
+          <input id="antitheft_debug" type="checkbox" />
+          <span>调试模式</span>
+        </label>
 
-          <div class="antitheft-import-section">
-            <p class="notes marginBot10">
-              使用此功能导入已加密的角色卡文件。系统会自动检测加密状态并要求输入密码。
-            </p>
-            <button id="antitheft_import_button" class="menu_button">
-              <i class="fa-solid fa-file-import"></i>
-              <span>选择加密角色卡文件</span>
-            </button>
-            <input
-              id="antitheft_import_file"
-              type="file"
-              accept=".png"
-              style="display: none"
-            />
-            <small class="notes marginTop10">
-              支持的格式：PNG 图片文件（包含加密的角色卡数据）
-            </small>
-          </div>
-        </div>
-
-        <div class="range-block">
-          <div class="range-block-title">
-            <i class="fa-solid fa-toggle-on"></i>
-            <span>基本设置</span>
-          </div>
-
-          <label class="checkbox_label" for="antitheft_enabled">
-            <input id="antitheft_enabled" type="checkbox" />
-            <span>启用防盗插件</span>
-          </label>
-          <small class="notes">
-            启用后，插件将自动检测加密角色卡并提供密码验证功能。
-          </small>
-
-          <label class="checkbox_label marginTop10" for="antitheft_debug">
-            <input id="antitheft_debug" type="checkbox" />
-            <span>调试模式</span>
-          </label>
-          <small class="notes">
-            启用后，将在浏览器控制台输出详细的调试信息。
-          </small>
-        </div>
-
-        <div class="range-block">
-          <div class="range-block-title">
-            <i class="fa-solid fa-server"></i>
-            <span>服务器配置</span>
-          </div>
-
+        <div class="marginTop10">
           <label for="antitheft_server_url">
-            <span>默认服务器地址（可选）</span>
+            <span>服务器地址（可选）</span>
           </label>
           <input
             id="antitheft_server_url"
             class="text_pole"
             type="url"
-            placeholder="https://api.example.com"
+            placeholder="留空使用卡片内置地址"
           />
-          <small class="notes">
-            可选配置。如果角色卡未指定服务器地址，将使用此默认值。留空则使用角色卡中的配置。
-          </small>
-        </div>
-
-        <div class="range-block">
-          <div class="range-block-title">
-            <i class="fa-solid fa-info-circle"></i>
-            <span>插件信息</span>
-          </div>
-
-          <div style="padding: 10px; background: #f5f5f5; border-radius: 6px">
-            <p style="margin: 0 0 8px 0"><strong>版本:</strong> 2.0.0</p>
-            <p style="margin: 0 0 8px 0"><strong>作者:</strong> EtafCisky</p>
-            <p style="margin: 0"><strong>许可:</strong> CC BY-ND 4.0</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- 使用说明页面 -->
-      <div class="antitheft-tab-content" id="antitheft-guide-tab">
-        <div class="range-block">
-          <div class="range-block-title">
-            <i class="fa-solid fa-circle-info"></i>
-            <span>快速开始</span>
-          </div>
-
-          <div class="antitheft-guide-section">
-            <h4><i class="fa-solid fa-list-ol"></i> 使用步骤</h4>
-            <ol class="antitheft-guide-list">
-              <li>
-                <strong>启用插件</strong>
-                <p>在设置页面勾选"启用防盗插件"选项。</p>
-              </li>
-              <li>
-                <strong>导入角色卡</strong>
-                <p>导入带有防盗保护的角色卡文件（PNG 格式）。</p>
-              </li>
-              <li>
-                <strong>输入密码</strong>
-                <p>如果角色卡被锁定，会自动弹出密码输入对话框。</p>
-              </li>
-              <li>
-                <strong>开始使用</strong>
-                <p>输入正确的密码后，即可正常使用角色卡。</p>
-              </li>
-            </ol>
-          </div>
-
-          <div class="antitheft-guide-section">
-            <h4><i class="fa-solid fa-book-open"></i> 功能说明</h4>
-            <p>
-              本插件用于导入和解密加密的角色卡文件。加密的角色卡无法通过常规方式导入，
-              必须使用本插件提供的专用导入功能。
-            </p>
-            <ul>
-              <li>支持密码验证</li>
-              <li>自动解密角色卡数据</li>
-              <li>无缝导入到 SillyTavern</li>
-              <li>保护角色卡版权</li>
-            </ul>
-          </div>
         </div>
       </div>
     </div>
