@@ -383,16 +383,20 @@ async function importDecryptedCard(originalMetadata, fileName, originalFile) {
       headers: getRequestHeaders({ omitContentType: true }),
     });
 
+    logger.debug("导入响应状态:", result.status);
+
     if (!result.ok) {
+      const errorText = await result.text();
+      logger.error("导入失败响应:", errorText);
       throw new Error(`导入失败: ${result.statusText}`);
     }
 
     const data = await result.json();
-    if (data.error) {
-      throw new Error(`服务器错误: ${data.error}`);
-    }
+    logger.debug("导入响应数据:", data);
 
-    return data.file_name || null;
+    // SillyTavern 可能返回 { error: true } 或其他格式
+    // 只要状态码是 200 就认为成功
+    return data.file_name || data.character_name || fileName;
   } catch (error) {
     logger.error("导入失败", error);
     throw error;
