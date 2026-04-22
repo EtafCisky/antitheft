@@ -307,22 +307,24 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
         }
 
         const charData = await getCharResult.json();
+        logger.debug("读取到的角色卡数据:", charData);
 
         // 使用完整数据更新角色卡（包含头像）
         const avatarFormData = new FormData();
         avatarFormData.append("avatar", pngFile);
         avatarFormData.append("avatar_url", `${importedFileName}.png`);
+        avatarFormData.append(
+          "ch_name",
+          charData.data?.name || charData.name || "",
+        );
+        avatarFormData.append("json_data", JSON.stringify(charData));
 
-        // 添加所有角色卡字段
-        for (const key in charData) {
-          if (key === "avatar" || key === "avatar_url") continue;
-
-          if (typeof charData[key] === "object" && charData[key] !== null) {
-            avatarFormData.append(key, JSON.stringify(charData[key]));
-          } else {
-            avatarFormData.append(key, charData[key] || "");
-          }
-        }
+        // 添加必需的字段
+        avatarFormData.append("chat", charData.chat || "");
+        avatarFormData.append(
+          "create_date",
+          charData.create_date || Date.now(),
+        );
 
         const avatarResult = await fetch("/api/characters/edit", {
           method: "POST",
@@ -331,7 +333,8 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
         });
 
         if (!avatarResult.ok) {
-          logger.warn("头像上传失败，但角色卡已导入");
+          const errorText = await avatarResult.text();
+          logger.warn("头像上传失败:", errorText);
         } else {
           logger.debug("头像上传成功");
         }
