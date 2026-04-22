@@ -260,7 +260,7 @@ async function showPasswordDialog(cardInfo) {
  */
 async function importDecryptedCard(originalMetadata, fileName, pngFile) {
   try {
-    // 导入 JSON 数据（包含所有角色信息）
+    // 第一步：导入 JSON 数据（包含所有角色信息）
     logger.debug("开始导入角色卡 JSON 数据");
     const jsonBlob = new Blob([JSON.stringify(originalMetadata)], {
       type: "application/json",
@@ -292,29 +292,101 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
 
     logger.info("角色卡 JSON 导入成功:", importedFileName);
 
-    // 单独上传头像 PNG 文件（使用相同的 import API）
+    // 第二步：替换 PNG 文件的头像（模仿 SillyTavern 的更换头像流程）
     if (pngFile) {
-      logger.debug("开始上传角色头像");
+      logger.debug("开始替换角色头像");
 
       try {
-        const avatarFormData = new FormData();
-        avatarFormData.append("avatar", pngFile, `${importedFileName}.png`);
-        avatarFormData.append("overwrite_name", importedFileName);
-
-        const avatarResult = await fetch("/api/characters/import", {
+        const getResult = await fetch("/api/characters/get", {
           method: "POST",
-          body: avatarFormData,
+          headers: getRequestHeaders(),
+          body: JSON.stringify({ avatar_url: `${importedFileName}.png` }),
+        });
+
+        if (!getResult.ok) {
+          logger.warn("无法读取角色数据，跳过头像替换");
+          return importedFileName;
+        }
+
+        const charData = await getResult.json();
+        logger.debug("成功读取角色数据，准备替换头像");
+
+        // 构建 FormData，模仿 SillyTavern 的表单提交
+        const editFormData = new FormData();
+
+        // 关键：添加新的头像文件
+        editFormData.append("avatar", pngFile);
+
+        // 必需字段
+        editFormData.append("avatar_url", `${importedFileName}.png`);
+        editFormData.append("ch_name", charData.name || "");
+        editFormData.append("description", charData.description || "");
+        editFormData.append("personality", charData.personality || "");
+        editFormData.append("scenario", charData.scenario || "");
+        editFormData.append("first_mes", charData.first_mes || "");
+        editFormData.append("mes_example", charData.mes_example || "");
+
+        // 可选字段（只在有值时添加）
+        if (charData.creator_notes)
+          editFormData.append("creator_notes", charData.creator_notes);
+        if (charData.system_prompt)
+          editFormData.append("system_prompt", charData.system_prompt);
+        if (charData.post_history_instructions)
+          editFormData.append(
+            "post_history_instructions",
+            charData.post_history_instructions,
+          );
+        if (charData.tags) editFormData.append("tags", charData.tags);
+        if (charData.creator) editFormData.append("creator", charData.creator);
+        if (charData.character_version)
+          editFormData.append("character_version", charData.character_version);
+
+        editFormData.append("fav", String(charData.fav || false));
+
+        // alternate_greetings
+        if (Array.isArray(charData.data?.alternate_greetings)) {
+          for (const greeting of charData.data.alternate_greetings) {
+            editFormData.append("alternate_greetings", greeting);
+          }
+        }
+
+        // extensions（包含世界书等重要数据）
+        if (charData.data?.extensions) {
+          editFormData.append(
+            "extensions",
+            JSON.stringify(charData.data.extensions),
+          );
+        }
+
+        // 调用 edit API 替换头像
+        const editResult = await fetch("/api/characters/edit", {
+          method: "POST",
+          body: editFormData,
           headers: getRequestHeaders({ omitContentType: true }),
         });
 
-        if (avatarResult.ok) {
-          logger.info("头像上传成功");
+        if (editResult.ok) {
+          logger.info("头像替换成功");
+
+          // 刷新缩略图缓存（模仿 SillyTavern 的行为）
+          try {
+            await fetch(
+              `/api/avatar?file=${encodeURIComponent(importedFileName)}.png`,
+              {
+                method: "GET",
+                cache: "reload",
+              },
+            );
+            logger.debug("缩略图缓存已刷新");
+          } catch (e) {
+            logger.debug("缩略图刷新失败（可忽略）:", e.message);
+          }
         } else {
-          const errorText = await avatarResult.text();
-          logger.warn("头像上传失败:", errorText);
+          const errorText = await editResult.text();
+          logger.warn("头像替换失败:", errorText);
         }
       } catch (err) {
-        logger.warn("头像上传异常:", err.message);
+        logger.warn("头像替换过程出错:", err.message);
       }
     }
 
