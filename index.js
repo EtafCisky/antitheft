@@ -289,42 +289,20 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
       throw new Error("导入成功但未返回文件名");
     }
 
-    // 第二步：读取刚导入的角色卡完整数据并更新头像
+    // 第二步：更新头像（使用原始元数据）
     if (pngFile) {
-      logger.debug("读取角色卡数据并更新头像:", importedFileName);
+      logger.debug("更新角色卡头像:", importedFileName);
 
       try {
-        // 读取刚导入的角色卡完整数据
-        const getCharResult = await fetch("/api/characters/get", {
-          method: "POST",
-          headers: getRequestHeaders(),
-          body: JSON.stringify({ avatar_url: `${importedFileName}.png` }),
-        });
-
-        if (!getCharResult.ok) {
-          logger.warn("无法读取角色卡数据，跳过头像更新");
-          return importedFileName;
-        }
-
-        const charData = await getCharResult.json();
-        logger.debug("读取到的角色卡数据:", charData);
-
-        // 使用完整数据更新角色卡（包含头像）
+        // 使用原始元数据更新角色卡（包含头像）
         const avatarFormData = new FormData();
         avatarFormData.append("avatar", pngFile);
         avatarFormData.append("avatar_url", `${importedFileName}.png`);
         avatarFormData.append(
           "ch_name",
-          charData.data?.name || charData.name || "",
+          originalMetadata.data?.name || originalMetadata.name || "",
         );
-        avatarFormData.append("json_data", JSON.stringify(charData));
-
-        // 添加必需的字段
-        avatarFormData.append("chat", charData.chat || "");
-        avatarFormData.append(
-          "create_date",
-          charData.create_date || Date.now(),
-        );
+        avatarFormData.append("json_data", JSON.stringify(originalMetadata));
 
         const avatarResult = await fetch("/api/characters/edit", {
           method: "POST",
