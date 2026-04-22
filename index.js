@@ -311,7 +311,13 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
       const charData = originalMetadata.data || originalMetadata;
       for (const key in charData) {
         if (charData.hasOwnProperty(key) && key !== "extensions") {
-          avatarFormData.append(key, charData[key] || "");
+          const value = charData[key];
+          // 如果是对象或数组（如 character_book），需要 JSON 序列化
+          if (typeof value === "object" && value !== null) {
+            avatarFormData.append(key, JSON.stringify(value));
+          } else {
+            avatarFormData.append(key, value || "");
+          }
         }
       }
 
