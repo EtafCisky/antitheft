@@ -297,7 +297,7 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
         // 读取刚导入的角色卡完整数据
         const getCharResult = await fetch("/api/characters/get", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getRequestHeaders(),
           body: JSON.stringify({ avatar_url: `${importedFileName}.png` }),
         });
 
