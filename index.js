@@ -260,7 +260,7 @@ async function showPasswordDialog(cardInfo) {
  */
 async function importDecryptedCard(originalMetadata, fileName, pngFile) {
   try {
-    // 第一步：导入 JSON 数据（包含所有角色信息）
+    // 第一步：导入 JSON 数据（会生成带默认头像的 PNG 文件）
     logger.debug("开始导入角色卡 JSON 数据");
     const jsonBlob = new Blob([JSON.stringify(originalMetadata)], {
       type: "application/json",
@@ -297,6 +297,9 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
       logger.debug("开始替换角色头像");
 
       try {
+        // 等待一小段时间，确保文件系统已完成写入
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
         const getResult = await fetch("/api/characters/get", {
           method: "POST",
           headers: getRequestHeaders(),
@@ -305,11 +308,16 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
 
         if (!getResult.ok) {
           logger.warn("无法读取角色数据，跳过头像替换");
+          // 即使失败也要刷新列表
+          if (typeof getCharacters === "function") {
+            await getCharacters();
+          }
           return importedFileName;
         }
 
         const charData = await getResult.json();
         logger.debug("成功读取角色数据，准备替换头像");
+        logger.debug("角色数据字段:", Object.keys(charData));
 
         // 构建 FormData，模仿 SillyTavern 的表单提交
         const editFormData = new FormData();
@@ -358,6 +366,8 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
           );
         }
 
+        logger.debug("准备调用 /api/characters/edit");
+
         // 调用 edit API 替换头像
         const editResult = await fetch("/api/characters/edit", {
           method: "POST",
@@ -383,11 +393,21 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
           }
         } else {
           const errorText = await editResult.text();
-          logger.warn("头像替换失败:", errorText);
+          logger.error("头像替换失败:", errorText);
+          logger.error("HTTP 状态码:", editResult.status);
         }
       } catch (err) {
-        logger.warn("头像替换过程出错:", err.message);
+        logger.error("头像替换过程出错:", err);
       }
+    }
+
+    // 第三步：刷新角色列表（重要！）
+    logger.debug("刷新角色列表");
+    if (typeof getCharacters === "function") {
+      await getCharacters();
+      logger.info("角色列表已刷新");
+    } else {
+      logger.warn("getCharacters 函数不可用");
     }
 
     return importedFileName;
