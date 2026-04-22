@@ -319,6 +319,21 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
         logger.debug("成功读取角色数据，准备替换头像");
         logger.debug("角色数据字段:", Object.keys(charData));
 
+        // 检查世界书数据
+        if (charData.character_book) {
+          logger.debug(
+            "检测到世界书数据，条目数:",
+            charData.character_book.entries?.length || 0,
+          );
+        } else if (charData.data?.character_book) {
+          logger.debug(
+            "检测到 data.character_book，条目数:",
+            charData.data.character_book.entries?.length || 0,
+          );
+        } else {
+          logger.warn("未检测到世界书数据");
+        }
+
         // 构建 FormData，模仿 SillyTavern 的表单提交
         const editFormData = new FormData();
 
@@ -358,7 +373,22 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
           }
         }
 
-        // extensions（包含世界书等重要数据）
+        // 世界书（character_book）- 重要！
+        if (charData.character_book) {
+          editFormData.append(
+            "character_book",
+            JSON.stringify(charData.character_book),
+          );
+          logger.debug("已添加 character_book 字段");
+        } else if (charData.data?.character_book) {
+          editFormData.append(
+            "character_book",
+            JSON.stringify(charData.data.character_book),
+          );
+          logger.debug("已添加 data.character_book 字段");
+        }
+
+        // extensions（包含其他扩展数据）
         if (charData.data?.extensions) {
           editFormData.append(
             "extensions",
@@ -378,15 +408,17 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
         if (editResult.ok) {
           logger.info("头像替换成功");
 
-          // 刷新缩略图缓存（模仿 SillyTavern 的行为）
+          // 刷新缩略图缓存（使用正确的 API）
           try {
-            await fetch(
-              `/api/avatar?file=${encodeURIComponent(importedFileName)}.png`,
-              {
-                method: "GET",
-                cache: "reload",
-              },
+            const thumbnailUrl = getThumbnailUrl(
+              "avatar",
+              `${importedFileName}.png`,
+              true,
             );
+            await fetch(thumbnailUrl, {
+              method: "GET",
+              cache: "reload",
+            });
             logger.debug("缩略图缓存已刷新");
           } catch (e) {
             logger.debug("缩略图刷新失败（可忽略）:", e.message);
@@ -403,11 +435,18 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
 
     // 第三步：刷新角色列表（重要！）
     logger.debug("刷新角色列表");
-    if (typeof getCharacters === "function") {
-      await getCharacters();
-      logger.info("角色列表已刷新");
-    } else {
-      logger.warn("getCharacters 函数不可用");
+    try {
+      if (typeof getCharacters === "function") {
+        await getCharacters();
+        logger.info("角色列表已刷新");
+      } else {
+        logger.warn("getCharacters 函数不可用，尝试手动刷新");
+        // 手动触发刷新
+        const refreshEvent = new Event("characterListRefresh");
+        window.dispatchEvent(refreshEvent);
+      }
+    } catch (e) {
+      logger.warn("刷新角色列表失败:", e.message);
     }
 
     return importedFileName;
