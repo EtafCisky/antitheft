@@ -1,20 +1,36 @@
 <div class="inline-drawer">
   <div class="inline-drawer-toggle inline-drawer-header">
-    <b>角色卡防盗插件</b>
+    <b>角色卡防盗</b>
     <span class="antitheft-version-badge">v3.0.0</span>
     <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
   </div>
   <div class="inline-drawer-content">
     <div class="antitheft-settings">
-      <!-- 导入区域 -->
-      <div class="range-block">
+      <!-- 标签页导航 -->
+      <div class="antitheft-tabs">
+        <div class="antitheft-tab active" data-tab="import">
+          <i class="fa-solid fa-file-import"></i>
+          <span>导入</span>
+        </div>
+        <div class="antitheft-tab" data-tab="settings">
+          <i class="fa-solid fa-gear"></i>
+          <span>设置</span>
+        </div>
+        <div class="antitheft-tab" data-tab="guide">
+          <i class="fa-solid fa-book"></i>
+          <span>说明</span>
+        </div>
+      </div>
+
+      <!-- 导入标签页 -->
+      <div id="antitheft-import-tab" class="antitheft-tab-content active">
         <div class="antitheft-import-section">
           <button
             id="antitheft_import_button"
             class="menu_button menu_button_icon"
           >
             <i class="fa-solid fa-file-import"></i>
-            <span>导入加密卡</span>
+            <span>选择加密卡</span>
           </button>
           <input
             id="antitheft_import_file"
@@ -22,19 +38,23 @@
             accept=".png"
             style="display: none"
           />
+          <small class="antitheft-hint">支持 PNG 格式的加密角色卡</small>
         </div>
       </div>
 
-      <!-- 可选设置 -->
-      <div class="range-block">
-        <label class="checkbox_label" for="antitheft_debug">
-          <input id="antitheft_debug" type="checkbox" />
-          <span>调试模式</span>
-        </label>
+      <!-- 设置标签页 -->
+      <div id="antitheft-settings-tab" class="antitheft-tab-content">
+        <div class="range-block">
+          <label class="checkbox_label" for="antitheft_debug">
+            <input id="antitheft_debug" type="checkbox" />
+            <span>调试模式</span>
+          </label>
+          <small class="antitheft-hint">在控制台输出详细日志</small>
+        </div>
 
-        <div class="marginTop10">
+        <div class="range-block">
           <label for="antitheft_server_url">
-            <span>服务器地址（可选）</span>
+            <span>自定义服务器</span>
           </label>
           <input
             id="antitheft_server_url"
@@ -42,6 +62,49 @@
             type="url"
             placeholder="留空使用卡片内置地址"
           />
+          <small class="antitheft-hint">可选，覆盖角色卡内置的服务器地址</small>
+        </div>
+      </div>
+
+      <!-- 使用说明标签页 -->
+      <div id="antitheft-guide-tab" class="antitheft-tab-content">
+        <div class="antitheft-guide-section">
+          <h4><i class="fa-solid fa-circle-info"></i>如何使用</h4>
+          <ol class="antitheft-guide-list">
+            <li>
+              <strong>获取加密卡</strong>
+              <p>从作者处获得加密的角色卡 PNG 文件</p>
+            </li>
+            <li>
+              <strong>导入角色卡</strong>
+              <p>点击"选择加密卡"按钮，选择 PNG 文件</p>
+            </li>
+            <li>
+              <strong>输入密码</strong>
+              <p>在弹出的对话框中输入作者提供的密码</p>
+            </li>
+            <li>
+              <strong>开始使用</strong>
+              <p>验证成功后，角色卡将自动导入到列表中</p>
+            </li>
+          </ol>
+
+          <h4><i class="fa-solid fa-circle-question"></i>常见问题</h4>
+
+          <div class="antitheft-faq-item">
+            <h4><i class="fa-solid fa-lock"></i>密码错误怎么办？</h4>
+            <p>请联系角色卡作者确认正确的密码。密码区分大小写。</p>
+          </div>
+
+          <div class="antitheft-faq-item">
+            <h4><i class="fa-solid fa-server"></i>服务器连接失败？</h4>
+            <p>检查网络连接，或在设置中配置自定义服务器地址。</p>
+          </div>
+
+          <div class="antitheft-faq-item">
+            <h4><i class="fa-solid fa-image"></i>头像显示异常？</h4>
+            <p>刷新页面或重新导入角色卡。如果问题持续，请联系作者。</p>
+          </div>
         </div>
       </div>
     </div>

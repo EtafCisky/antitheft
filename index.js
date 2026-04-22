@@ -17,7 +17,6 @@ const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 const PLUGIN_VERSION = "3.0.0";
 
 const defaultSettings = {
-  enabled: true, // 默认启用
   debug: false,
   serverUrl: "",
 };
@@ -353,9 +352,6 @@ async function loadSettings() {
     Object.assign(extension_settings[extensionName], defaultSettings);
   }
 
-  // 强制启用插件
-  extension_settings[extensionName].enabled = true;
-
   $("#antitheft_debug").prop(
     "checked",
     extension_settings[extensionName].debug,
@@ -383,6 +379,15 @@ jQuery(async () => {
     $("#antitheft_server_url").on("input", (e) => {
       extension_settings[extensionName].serverUrl = String($(e.target).val());
       saveSettingsDebounced();
+    });
+
+    // 标签页切换
+    $(".antitheft-tab").on("click", function () {
+      const tabName = $(this).data("tab");
+      $(".antitheft-tab").removeClass("active");
+      $(this).addClass("active");
+      $(".antitheft-tab-content").removeClass("active");
+      $(`#antitheft-${tabName}-tab`).addClass("active");
     });
 
     await loadSettings();
