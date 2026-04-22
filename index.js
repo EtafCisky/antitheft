@@ -291,13 +291,40 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
     }
 
     // 第二步：上传 PNG 图片作为头像
-    if (pngFile) {
+    if (pngFile && originalMetadata) {
       logger.debug("上传头像:", importedFileName);
+
+      // 构造编辑请求，只更新头像
       const avatarFormData = new FormData();
       avatarFormData.append("avatar", pngFile);
-      avatarFormData.append("overwrite_name", importedFileName);
+      avatarFormData.append(
+        "ch_name",
+        originalMetadata.name || originalMetadata.data?.name || "",
+      );
+      avatarFormData.append("avatar_url", `${importedFileName}.png`);
+      avatarFormData.append("chat", originalMetadata.chat || importedFileName);
+      avatarFormData.append(
+        "create_date",
+        originalMetadata.create_date || Date.now(),
+      );
 
-      const avatarResult = await fetch("/api/characters/upload-avatar", {
+      // 添加所有必需的字段
+      const charData = originalMetadata.data || originalMetadata;
+      for (const key in charData) {
+        if (charData.hasOwnProperty(key) && key !== "extensions") {
+          avatarFormData.append(key, charData[key] || "");
+        }
+      }
+
+      // 添加 extensions
+      if (originalMetadata.extensions) {
+        avatarFormData.append(
+          "extensions",
+          JSON.stringify(originalMetadata.extensions),
+        );
+      }
+
+      const avatarResult = await fetch("/api/characters/edit", {
         method: "POST",
         body: avatarFormData,
         headers: getRequestHeaders({ omitContentType: true }),
