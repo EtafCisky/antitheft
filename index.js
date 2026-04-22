@@ -256,18 +256,187 @@ async function showPasswordDialog(cardInfo) {
 }
 
 /**
+ * 将元数据写入 PNG 文件
+ */
+async function writePngMetadata(pngFile, metadata) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const arrayBuffer = e.target.result;
+        const uint8Array = new Uint8Array(arrayBuffer);
+
+        // 验证 PNG 签名
+        const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+        for (let i = 0; i < 8; i++) {
+          if (uint8Array[i] !== pngSignature[i]) {
+            throw new Error("不是有效的 PNG 文件");
+          }
+        }
+
+        // 准备新的元数据
+        const metadataString =
+          typeof metadata === "string" ? metadata : JSON.stringify(metadata);
+        const metadataBytes = new TextEncoder().encode(metadataString);
+        const base64String = btoa(
+          String.fromCharCode.apply(null, metadataBytes),
+        );
+        const base64Bytes = new TextEncoder().encode(base64String);
+
+        // 创建 tEXt chunk
+        const keyword = "chara";
+        const keywordBytes = new TextEncoder().encode(keyword);
+        const textData = new Uint8Array(
+          keywordBytes.length + 1 + base64Bytes.length,
+        );
+        textData.set(keywordBytes, 0);
+        textData[keywordBytes.length] = 0; // null separator
+        textData.set(base64Bytes, keywordBytes.length + 1);
+
+        // 计算 CRC
+        const crc32 = (data) => {
+          let crc = -1;
+          for (let i = 0; i < data.length; i++) {
+            crc = (crc >>> 8) ^ crcTable[(crc ^ data[i]) & 0xff];
+          }
+          return (crc ^ -1) >>> 0;
+        };
+
+        // CRC32 查找表
+        const crcTable = new Uint32Array(256);
+        for (let i = 0; i < 256; i++) {
+          let c = i;
+          for (let j = 0; j < 8; j++) {
+            c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+          }
+          crcTable[i] = c;
+        }
+
+        const typeBytes = new TextEncoder().encode("tEXt");
+        const chunkData = new Uint8Array(4 + textData.length);
+        chunkData.set(typeBytes, 0);
+        chunkData.set(textData, 4);
+        const crc = crc32(chunkData);
+
+        // 构建新的 PNG chunk
+        const newChunk = new Uint8Array(12 + textData.length);
+        const view = new DataView(newChunk.buffer);
+        view.setUint32(0, textData.length);
+        newChunk.set(typeBytes, 4);
+        newChunk.set(textData, 8);
+        view.setUint32(8 + textData.length, crc);
+
+        // 找到 IEND chunk 的位置
+        let offset = 8;
+        let iendOffset = -1;
+        while (offset < uint8Array.length) {
+          const length =
+            (uint8Array[offset] << 24) |
+            (uint8Array[offset + 1] << 16) |
+            (uint8Array[offset + 2] << 8) |
+            uint8Array[offset + 3];
+          const type = String.fromCharCode(
+            uint8Array[offset + 4],
+            uint8Array[offset + 5],
+            uint8Array[offset + 6],
+            uint8Array[offset + 7],
+          );
+
+          if (type === "IEND") {
+            iendOffset = offset;
+            break;
+          }
+
+          offset += 12 + length;
+        }
+
+        if (iendOffset === -1) {
+          throw new Error("PNG 文件格式错误：未找到 IEND chunk");
+        }
+
+        // 移除旧的 tEXt chunks（如果有）
+        const chunks = [];
+        offset = 8;
+        while (offset < iendOffset) {
+          const length =
+            (uint8Array[offset] << 24) |
+            (uint8Array[offset + 1] << 16) |
+            (uint8Array[offset + 2] << 8) |
+            uint8Array[offset + 3];
+          const type = String.fromCharCode(
+            uint8Array[offset + 4],
+            uint8Array[offset + 5],
+            uint8Array[offset + 6],
+            uint8Array[offset + 7],
+          );
+
+          const chunkSize = 12 + length;
+          if (type !== "tEXt") {
+            chunks.push(uint8Array.slice(offset, offset + chunkSize));
+          }
+          offset += chunkSize;
+        }
+
+        // 组装新的 PNG
+        const totalSize =
+          8 +
+          chunks.reduce((sum, c) => sum + c.length, 0) +
+          newChunk.length +
+          12;
+        const newPng = new Uint8Array(totalSize);
+        let pos = 0;
+
+        // PNG 签名
+        newPng.set(pngSignature, pos);
+        pos += 8;
+
+        // 原有 chunks（除了 tEXt）
+        for (const chunk of chunks) {
+          newPng.set(chunk, pos);
+          pos += chunk.length;
+        }
+
+        // 新的 tEXt chunk
+        newPng.set(newChunk, pos);
+        pos += newChunk.length;
+
+        // IEND chunk
+        newPng.set(uint8Array.slice(iendOffset, iendOffset + 12), pos);
+
+        // 创建 Blob
+        const blob = new Blob([newPng], { type: "image/png" });
+        resolve(blob);
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    reader.onerror = () => reject(new Error("文件读取失败"));
+    reader.readAsArrayBuffer(pngFile);
+  });
+}
+
+/**
  * 导入解密后的角色卡
  */
 async function importDecryptedCard(originalMetadata, fileName, pngFile) {
   try {
-    // 第一步：导入 JSON 数据
-    const jsonBlob = new Blob([JSON.stringify(originalMetadata)], {
-      type: "application/json",
+    logger.debug("开始导入角色卡");
+    logger.debug("原始元数据:", originalMetadata);
+
+    // 重新创建包含解密后元数据的 PNG 文件
+    logger.debug("重新创建 PNG 文件，写入解密后的元数据");
+    const decryptedPngBlob = await writePngMetadata(pngFile, originalMetadata);
+
+    // 将 Blob 转换为 File 对象
+    const decryptedPngFile = new File([decryptedPngBlob], `${fileName}.png`, {
+      type: "image/png",
     });
 
+    logger.debug("使用解密后的 PNG 文件导入");
     const formData = new FormData();
-    formData.append("avatar", jsonBlob, `${fileName}.json`);
-    formData.append("file_type", "json");
+    formData.append("avatar", decryptedPngFile, `${fileName}.png`);
 
     const result = await fetch("/api/characters/import", {
       method: "POST",
@@ -289,59 +458,7 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
       throw new Error("导入成功但未返回文件名");
     }
 
-    // 第二步：上传 PNG 图片作为头像
-    if (pngFile && originalMetadata) {
-      logger.debug("上传头像:", importedFileName);
-
-      // 构造编辑请求，只更新头像
-      const avatarFormData = new FormData();
-      avatarFormData.append("avatar", pngFile);
-      avatarFormData.append(
-        "ch_name",
-        originalMetadata.name || originalMetadata.data?.name || "",
-      );
-      avatarFormData.append("avatar_url", `${importedFileName}.png`);
-      avatarFormData.append("chat", originalMetadata.chat || importedFileName);
-      avatarFormData.append(
-        "create_date",
-        originalMetadata.create_date || Date.now(),
-      );
-
-      // 添加所有必需的字段
-      const charData = originalMetadata.data || originalMetadata;
-      for (const key in charData) {
-        if (charData.hasOwnProperty(key) && key !== "extensions") {
-          const value = charData[key];
-          // 如果是对象或数组（如 character_book），需要 JSON 序列化
-          if (typeof value === "object" && value !== null) {
-            avatarFormData.append(key, JSON.stringify(value));
-          } else {
-            avatarFormData.append(key, value || "");
-          }
-        }
-      }
-
-      // 添加 extensions
-      if (originalMetadata.extensions) {
-        avatarFormData.append(
-          "extensions",
-          JSON.stringify(originalMetadata.extensions),
-        );
-      }
-
-      const avatarResult = await fetch("/api/characters/edit", {
-        method: "POST",
-        body: avatarFormData,
-        headers: getRequestHeaders({ omitContentType: true }),
-      });
-
-      if (!avatarResult.ok) {
-        logger.warn("头像上传失败，但角色卡已导入");
-      } else {
-        logger.debug("头像上传成功");
-      }
-    }
-
+    logger.debug("导入成功:", importedFileName);
     return importedFileName;
   } catch (error) {
     logger.error("导入失败", error);
