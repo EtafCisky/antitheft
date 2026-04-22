@@ -436,7 +436,7 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
 
     logger.debug("使用解密后的 PNG 文件导入");
     const formData = new FormData();
-    formData.append("avatar", decryptedPngFile, `${fileName}.png`);
+    formData.append("avatar", decryptedPngFile);
 
     const result = await fetch("/api/characters/import", {
       method: "POST",
