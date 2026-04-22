@@ -289,80 +289,54 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
       throw new Error("导入成功但未返回文件名");
     }
 
-    // 第二步：上传 PNG 图片作为头像
-    if (pngFile && originalMetadata) {
-      logger.debug("上传头像:", importedFileName);
+    // 第二步：读取刚导入的角色卡完整数据并更新头像
+    if (pngFile) {
+      logger.debug("读取角色卡数据并更新头像:", importedFileName);
 
-      // 构造编辑请求，只更新头像
-      const avatarFormData = new FormData();
-      avatarFormData.append("avatar", pngFile);
+      try {
+        // 读取刚导入的角色卡完整数据
+        const getCharResult = await fetch("/api/characters/get", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ avatar_url: `${importedFileName}.png` }),
+        });
 
-      // 使用原始元数据的完整数据
-      const charData = originalMetadata.data || originalMetadata;
+        if (!getCharResult.ok) {
+          logger.warn("无法读取角色卡数据，跳过头像更新");
+          return importedFileName;
+        }
 
-      avatarFormData.append("ch_name", charData.name || "");
-      avatarFormData.append("avatar_url", `${importedFileName}.png`);
-      avatarFormData.append("chat", originalMetadata.chat || importedFileName);
-      avatarFormData.append(
-        "create_date",
-        originalMetadata.create_date || Date.now(),
-      );
+        const charData = await getCharResult.json();
 
-      // 添加所有字段，包括世界书
-      const fieldsToInclude = [
-        "name",
-        "description",
-        "personality",
-        "scenario",
-        "first_mes",
-        "mes_example",
-        "creator_notes",
-        "system_prompt",
-        "post_history_instructions",
-        "alternate_greetings",
-        "tags",
-        "creator",
-        "character_version",
-        "character_book", // 世界书数据
-      ];
+        // 使用完整数据更新角色卡（包含头像）
+        const avatarFormData = new FormData();
+        avatarFormData.append("avatar", pngFile);
+        avatarFormData.append("avatar_url", `${importedFileName}.png`);
 
-      fieldsToInclude.forEach((key) => {
-        if (charData.hasOwnProperty(key)) {
-          const value = charData[key];
-          if (typeof value === "object") {
-            avatarFormData.append(key, JSON.stringify(value));
+        // 添加所有角色卡字段
+        for (const key in charData) {
+          if (key === "avatar" || key === "avatar_url") continue;
+
+          if (typeof charData[key] === "object" && charData[key] !== null) {
+            avatarFormData.append(key, JSON.stringify(charData[key]));
           } else {
-            avatarFormData.append(key, value || "");
+            avatarFormData.append(key, charData[key] || "");
           }
         }
-      });
 
-      // 添加 extensions（包含额外的世界书或其他扩展数据）
-      if (originalMetadata.extensions) {
-        avatarFormData.append(
-          "extensions",
-          JSON.stringify(originalMetadata.extensions),
-        );
-      }
+        const avatarResult = await fetch("/api/characters/edit", {
+          method: "POST",
+          body: avatarFormData,
+          headers: getRequestHeaders({ omitContentType: true }),
+        });
 
-      // 添加 spec 和 spec_version
-      if (originalMetadata.spec) {
-        avatarFormData.append("spec", originalMetadata.spec);
-      }
-      if (originalMetadata.spec_version) {
-        avatarFormData.append("spec_version", originalMetadata.spec_version);
-      }
-
-      const avatarResult = await fetch("/api/characters/edit", {
-        method: "POST",
-        body: avatarFormData,
-        headers: getRequestHeaders({ omitContentType: true }),
-      });
-
-      if (!avatarResult.ok) {
-        logger.warn("头像上传失败，但角色卡已导入");
-      } else {
-        logger.debug("头像上传成功");
+        if (!avatarResult.ok) {
+          logger.warn("头像上传失败，但角色卡已导入");
+        } else {
+          logger.debug("头像上传成功");
+        }
+      } catch (err) {
+        logger.warn("头像更新失败:", err);
       }
     }
 
