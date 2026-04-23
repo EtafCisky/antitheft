@@ -260,7 +260,7 @@ async function showPasswordDialog(cardInfo) {
  */
 async function importDecryptedCard(originalMetadata, fileName, pngFile) {
   try {
-    // 第一步：导入 JSON 数据（会生成带默认头像的 PNG 文件）
+    // 只导入 JSON 数据（包含所有角色信息：描述、世界书等）
     logger.debug("开始导入角色卡 JSON 数据");
     const jsonBlob = new Blob([JSON.stringify(originalMetadata)], {
       type: "application/json",
@@ -290,165 +290,7 @@ async function importDecryptedCard(originalMetadata, fileName, pngFile) {
       throw new Error("导入成功但未返回文件名");
     }
 
-    logger.info("角色卡 JSON 导入成功:", importedFileName);
-
-    // 第二步：替换 PNG 文件的头像（模仿 SillyTavern 的更换头像流程）
-    if (pngFile) {
-      logger.debug("开始替换角色头像");
-
-      try {
-        // 等待一小段时间，确保文件系统已完成写入
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        const getResult = await fetch("/api/characters/get", {
-          method: "POST",
-          headers: getRequestHeaders(),
-          body: JSON.stringify({ avatar_url: `${importedFileName}.png` }),
-        });
-
-        if (!getResult.ok) {
-          logger.warn("无法读取角色数据，跳过头像替换");
-          // 即使失败也要刷新列表
-          if (typeof getCharacters === "function") {
-            await getCharacters();
-          }
-          return importedFileName;
-        }
-
-        const charData = await getResult.json();
-        logger.debug("成功读取角色数据，准备替换头像");
-        logger.debug("角色数据字段:", Object.keys(charData));
-
-        // 检查世界书数据
-        if (charData.character_book) {
-          logger.debug(
-            "检测到世界书数据，条目数:",
-            charData.character_book.entries?.length || 0,
-          );
-        } else if (charData.data?.character_book) {
-          logger.debug(
-            "检测到 data.character_book，条目数:",
-            charData.data.character_book.entries?.length || 0,
-          );
-        } else {
-          logger.warn("未检测到世界书数据");
-        }
-
-        // 构建 FormData，模仿 SillyTavern 的表单提交
-        const editFormData = new FormData();
-
-        // 关键：添加新的头像文件
-        editFormData.append("avatar", pngFile);
-
-        // 必需字段
-        editFormData.append("avatar_url", `${importedFileName}.png`);
-        editFormData.append("ch_name", charData.name || "");
-        editFormData.append("description", charData.description || "");
-        editFormData.append("personality", charData.personality || "");
-        editFormData.append("scenario", charData.scenario || "");
-        editFormData.append("first_mes", charData.first_mes || "");
-        editFormData.append("mes_example", charData.mes_example || "");
-
-        // 可选字段（只在有值时添加）
-        if (charData.creator_notes)
-          editFormData.append("creator_notes", charData.creator_notes);
-        if (charData.system_prompt)
-          editFormData.append("system_prompt", charData.system_prompt);
-        if (charData.post_history_instructions)
-          editFormData.append(
-            "post_history_instructions",
-            charData.post_history_instructions,
-          );
-        if (charData.tags) editFormData.append("tags", charData.tags);
-        if (charData.creator) editFormData.append("creator", charData.creator);
-        if (charData.character_version)
-          editFormData.append("character_version", charData.character_version);
-
-        editFormData.append("fav", String(charData.fav || false));
-
-        // alternate_greetings
-        if (Array.isArray(charData.data?.alternate_greetings)) {
-          for (const greeting of charData.data.alternate_greetings) {
-            editFormData.append("alternate_greetings", greeting);
-          }
-        }
-
-        // 世界书（character_book）- 重要！
-        if (charData.character_book) {
-          editFormData.append(
-            "character_book",
-            JSON.stringify(charData.character_book),
-          );
-          logger.debug("已添加 character_book 字段");
-        } else if (charData.data?.character_book) {
-          editFormData.append(
-            "character_book",
-            JSON.stringify(charData.data.character_book),
-          );
-          logger.debug("已添加 data.character_book 字段");
-        }
-
-        // extensions（包含其他扩展数据）
-        if (charData.data?.extensions) {
-          editFormData.append(
-            "extensions",
-            JSON.stringify(charData.data.extensions),
-          );
-        }
-
-        logger.debug("准备调用 /api/characters/edit");
-
-        // 调用 edit API 替换头像
-        const editResult = await fetch("/api/characters/edit", {
-          method: "POST",
-          body: editFormData,
-          headers: getRequestHeaders({ omitContentType: true }),
-        });
-
-        if (editResult.ok) {
-          logger.info("头像替换成功");
-
-          // 刷新缩略图缓存（使用正确的 API）
-          try {
-            const thumbnailUrl = getThumbnailUrl(
-              "avatar",
-              `${importedFileName}.png`,
-              true,
-            );
-            await fetch(thumbnailUrl, {
-              method: "GET",
-              cache: "reload",
-            });
-            logger.debug("缩略图缓存已刷新");
-          } catch (e) {
-            logger.debug("缩略图刷新失败（可忽略）:", e.message);
-          }
-        } else {
-          const errorText = await editResult.text();
-          logger.error("头像替换失败:", errorText);
-          logger.error("HTTP 状态码:", editResult.status);
-        }
-      } catch (err) {
-        logger.error("头像替换过程出错:", err);
-      }
-    }
-
-    // 第三步：刷新角色列表（重要！）
-    logger.debug("刷新角色列表");
-    try {
-      if (typeof getCharacters === "function") {
-        await getCharacters();
-        logger.info("角色列表已刷新");
-      } else {
-        logger.warn("getCharacters 函数不可用，尝试手动刷新");
-        // 手动触发刷新
-        const refreshEvent = new Event("characterListRefresh");
-        window.dispatchEvent(refreshEvent);
-      }
-    } catch (e) {
-      logger.warn("刷新角色列表失败:", e.message);
-    }
-
+    logger.info("角色卡导入成功:", importedFileName);
     return importedFileName;
   } catch (error) {
     logger.error("导入失败", error);
@@ -546,7 +388,6 @@ jQuery(async () => {
           const fileName = await importDecryptedCard(
             originalMetadata,
             file.name.replace(".png", ""),
-            file, // 传入原始 PNG 文件用于上传头像
           );
           if (fileName) {
             toastr.success(`角色卡已导入: ${fileName}`);
