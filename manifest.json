@@ -6,7 +6,8 @@
   "js": "index.js",
   "css": "style.css",
   "author": "EtafCisky",
-  "version": "2.0.0",
-  "license": "CC BY-ND 4.0",
-  "description": "角色卡防盗插件，用于解密和导入加密的角色卡文件。支持密码验证和自动解密导入功能。"
+  "version": "3.0.0",
+  "homePage": "https://github.com/yourusername/antitheft",
+  "auto_update": true,
+  "minimum_client_version": "1.12.0"
 }
