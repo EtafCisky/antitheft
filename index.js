@@ -5,10 +5,7 @@
 
 /* global jQuery, window, $, toastr, getCharacters */
 
-import {
-  getRequestHeaders,
-  saveSettingsDebounced,
-} from "../../../../script.js";
+import { getRequestHeaders } from "../../../../script.js";
 import { extension_settings } from "../../../extensions.js";
 import { callGenericPopup, POPUP_TYPE } from "../../../popup.js";
 
@@ -107,19 +104,14 @@ async function readPngMetadata(file) {
           throw new Error("PNG 文件中未找到角色卡元数据");
         }
 
-        // 调试：输出元数据前100个字符
         logger.debug("元数据内容:", metadataString.substring(0, 100));
 
-        // 检查是否为加密格式: ENCRYPTED:cardId:serverUrl:version:base64data
         if (metadataString.startsWith("ENCRYPTED:")) {
           logger.debug("检测到加密格式");
 
-          // 使用正则表达式解析，避免 serverUrl 中的冒号导致解析错误
-          // 格式: ENCRYPTED:cardId:serverUrl:version:base64data
           const encryptedPrefix = "ENCRYPTED:";
           let remaining = metadataString.substring(encryptedPrefix.length);
 
-          // 提取 cardId (6-8位数字)
           const cardIdMatch = remaining.match(/^(\d{6,8}):/);
           if (!cardIdMatch) {
             throw new Error("加密格式错误：无法解析 cardId");
@@ -127,7 +119,6 @@ async function readPngMetadata(file) {
           const card_id = cardIdMatch[1];
           remaining = remaining.substring(card_id.length + 1);
 
-          // 提取 serverUrl (http:// 或 https:// 开头，到下一个 :数字: 为止)
           const serverUrlMatch = remaining.match(
             /^(https?:\/\/[^:]+(?::\d+)?):(\d+):/,
           );
@@ -138,7 +129,6 @@ async function readPngMetadata(file) {
           const password_version = parseInt(serverUrlMatch[2]);
           remaining = remaining.substring(serverUrlMatch[0].length);
 
-          // 剩余部分是 encrypted_data
           const encrypted_data = remaining;
 
           logger.debug("解析结果:", {
@@ -217,19 +207,61 @@ async function verifyPassword(cardId, password, serverUrl) {
 }
 
 /**
+ * 获取角色卡信息（包括作者名和原贴链接）
+ */
+async function getCardInfo(cardId, serverUrl) {
+  try {
+    logger.debug("获取角色卡信息:", { cardId, serverUrl });
+    const response = await fetch(`${serverUrl}/api/cards/${cardId}/info`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!response.ok) {
+      logger.warn("获取角色卡信息失败:", response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    if (data.success) {
+      return {
+        author_name: data.author_name || null,
+        original_post_url: data.original_post_url || null,
+      };
+    }
+    return null;
+  } catch (error) {
+    logger.warn("获取角色卡信息失败:", error);
+    return null;
+  }
+}
+
+/**
  * 显示密码验证弹窗
  */
 async function showPasswordDialog(cardInfo) {
+  const authorInfo = cardInfo.author_name
+    ? `<div style="margin-bottom: 8px;"><strong>作者:</strong> ${cardInfo.author_name}</div>`
+    : "";
+  const postUrlInfo = cardInfo.original_post_url
+    ? `<div style="margin-bottom: 8px;"><strong>原贴链接:</strong> <a href="${cardInfo.original_post_url}" target="_blank" style="color: #2563eb; text-decoration: underline;">${cardInfo.original_post_url}</a></div>`
+    : "";
+
   const dialogHtml = `
-    <div style="padding: 20px;">
+    <div style="padding: 20px; max-width: 500px;">
       <div style="text-align: center; margin-bottom: 20px;">
-        <h3>🔒 角色卡已加密</h3>
-        <p style="color: #666;">请输入密码解锁</p>
+        <h3 style="margin: 0 0 10px 0; color: #1f2937;">🔒 角色卡已加密</h3>
+        <p style="color: #6b7280; margin: 0;">请输入密码解锁</p>
       </div>
-      <div style="margin-bottom: 16px; padding: 12px; background: #f5f5f5; border-radius: 6px; font-size: 13px;">
-        <div><strong>文件:</strong> ${cardInfo.name}</div>
-        <div><strong>Card ID:</strong> ${cardInfo.card_id}</div>
-        <div><strong>服务器:</strong> ${cardInfo.server_url}</div>
+      <div style="margin-bottom: 16px; padding: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <div style="margin-bottom: 8px; font-size: 14px;"><strong>文件名:</strong> ${cardInfo.name}</div>
+        ${authorInfo}
+        ${postUrlInfo}
+      </div>
+      <div style="padding: 14px; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px; margin-bottom: 16px;">
+        <p style="margin: 0; font-size: 13px; color: #92400e; line-height: 1.5;">
+          <strong>⚠️ 防盗提示:</strong> 如果您是从其他途径获得此角色卡，可能是盗版或未经授权的版本。请支持原作者，从官方渠道获取。
+        </p>
       </div>
     </div>
   `;
@@ -258,9 +290,8 @@ async function showPasswordDialog(cardInfo) {
 /**
  * 导入解密后的角色卡
  */
-async function importDecryptedCard(originalMetadata, fileName, pngFile) {
+async function importDecryptedCard(originalMetadata, fileName) {
   try {
-    // 只导入 JSON 数据（包含所有角色信息：描述、世界书等）
     logger.debug("开始导入角色卡 JSON 数据");
     const jsonBlob = new Blob([JSON.stringify(originalMetadata)], {
       type: "application/json",
@@ -336,7 +367,6 @@ jQuery(async () => {
       saveSettingsDebounced();
     });
 
-    // 标签页切换
     $(".antitheft-tab").on("click", function () {
       const tabName = $(this).data("tab");
       $(".antitheft-tab").removeClass("active");
@@ -364,11 +394,18 @@ jQuery(async () => {
         if (result.encrypted) {
           logger.info("检测到加密角色卡");
 
+          const additionalInfo = await getCardInfo(
+            result.card_id,
+            result.server_url,
+          );
+
           const cardInfo = {
             name: file.name.replace(".png", ""),
             card_id: result.card_id,
             server_url: result.server_url,
             encrypted_data: result.encrypted_data,
+            author_name: additionalInfo?.author_name || null,
+            original_post_url: additionalInfo?.original_post_url || null,
           };
 
           const password = await showPasswordDialog(cardInfo);
@@ -411,6 +448,7 @@ jQuery(async () => {
       decryptCardData,
       importDecryptedCard,
       readPngMetadata,
+      getCardInfo,
       version: PLUGIN_VERSION,
     };
 
