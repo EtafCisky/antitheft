@@ -207,7 +207,7 @@ async function verifyPassword(cardId, password, serverUrl) {
 }
 
 /**
- * 获取角色卡信息（包括作者名和原贴链接）
+ * 获取角色卡信息（包括作者名和发布链接）
  */
 async function getCardInfo(cardId, serverUrl) {
   try {
@@ -241,10 +241,10 @@ async function getCardInfo(cardId, serverUrl) {
  */
 async function showPasswordDialog(cardInfo) {
   const authorInfo = cardInfo.author_name
-    ? `<div style="margin-bottom: 8px;"><strong>作者:</strong> ${cardInfo.author_name}</div>`
+    ? `<div style="margin-bottom: 8px; color: #374151;"><strong>作者:</strong> ${cardInfo.author_name}</div>`
     : "";
   const postUrlInfo = cardInfo.original_post_url
-    ? `<div style="margin-bottom: 8px;"><strong>原贴链接:</strong> <a href="${cardInfo.original_post_url}" target="_blank" style="color: #2563eb; text-decoration: underline;">${cardInfo.original_post_url}</a></div>`
+    ? `<div style="margin-bottom: 8px; color: #374151;"><strong>发布链接:</strong> <a href="${cardInfo.original_post_url}" target="_blank" style="color: #2563eb; text-decoration: underline;">${cardInfo.original_post_url}</a></div>`
     : "";
 
   const dialogHtml = `
@@ -253,8 +253,8 @@ async function showPasswordDialog(cardInfo) {
         <h3 style="margin: 0 0 10px 0; color: #1f2937;">🔒 角色卡已加密</h3>
         <p style="color: #6b7280; margin: 0;">请输入密码解锁</p>
       </div>
-      <div style="margin-bottom: 16px; padding: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-        <div style="margin-bottom: 8px; font-size: 14px;"><strong>文件名:</strong> ${cardInfo.name}</div>
+      <div style="margin-bottom: 16px; padding: 16px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 8px;">
+        <div style="margin-bottom: 8px; font-size: 14px; color: #374151;"><strong>文件名:</strong> ${cardInfo.name}</div>
         ${authorInfo}
         ${postUrlInfo}
       </div>
